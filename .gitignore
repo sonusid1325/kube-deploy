@@ -1,0 +1,64 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Setup script (one-time use)
+setup-git-history.sh
+
+
+# Go build artifacts
+*.o
+*.a
+*.test
+*.out
+*.prof
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor directory (if not committing deps)
+# vendor/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Docker
+docker-compose.override.yml
+
+# Coverage
+coverage.out
+coverage.html
+*.coverprofile
+
+# Debug
+__debug_bin*
+debug
+
+# Protobuf generated (uncomment if regenerating locally)
+# api/v1/*.pb.go
+
+# OS files
+.DS_Store
+.Trash-*
