@@ -1,0 +1,280 @@
+syntax = "proto3";
+
+package kubedeploy.v1;
+
+option go_package = "github.com/sonu/kube-deploy/api/v1;v1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum DeployStrategy {
+  DEPLOY_STRATEGY_UNSPECIFIED = 0;
+  DEPLOY_STRATEGY_ROLLING = 1;
+  DEPLOY_STRATEGY_CANARY = 2;
+  DEPLOY_STRATEGY_BLUE_GREEN = 3;
+}
+
+enum DeploymentPhase {
+  DEPLOYMENT_PHASE_UNSPECIFIED = 0;
+  DEPLOYMENT_PHASE_PENDING = 1;
+  DEPLOYMENT_PHASE_IN_PROGRESS = 2;
+  DEPLOYMENT_PHASE_HEALTH_CHECK = 3;
+  DEPLOYMENT_PHASE_PROMOTING = 4;
+  DEPLOYMENT_PHASE_ROLLING_BACK = 5;
+  DEPLOYMENT_PHASE_COMPLETED = 6;
+  DEPLOYMENT_PHASE_FAILED = 7;
+  DEPLOYMENT_PHASE_ROLLED_BACK = 8;
+}
+
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_HEALTHY = 1;
+  HEALTH_STATUS_DEGRADED = 2;
+  HEALTH_STATUS_UNHEALTHY = 3;
+  HEALTH_STATUS_UNKNOWN = 4;
+}
+
+enum HealthCheckType {
+  HEALTH_CHECK_TYPE_UNSPECIFIED = 0;
+  HEALTH_CHECK_TYPE_POD_READINESS = 1;
+  HEALTH_CHECK_TYPE_RESTART_COUNT = 2;
+  HEALTH_CHECK_TYPE_HTTP_PROBE = 3;
+  HEALTH_CHECK_TYPE_CUSTOM_METRIC = 4;
+}
+
+// ============================================================================
+// Core Messages
+// ============================================================================
+
+message DeploymentTarget {
+  string namespace = 1;
+  string deployment_name = 2;
+  string container_name = 3;
+  string image = 4;
+}
+
+message RollingUpdateConfig {
+  int32 max_unavailable = 1;
+  int32 max_surge = 2;
+}
+
+message CanaryConfig {
+  int32 canary_replicas = 1;
+  int32 canary_percent = 2;
+  google.protobuf.Duration analysis_duration = 3;
+  int32 success_threshold = 4;
+  int32 steps = 5;
+  repeated int32 step_weights = 6;
+}
+
+message RollbackPolicy {
+  bool enabled = 1;
+  int32 max_retries = 2;
+  google.protobuf.Duration health_check_interval = 3;
+  google.protobuf.Duration health_check_timeout = 4;
+  int32 failure_threshold = 5;
+  int32 success_threshold = 6;
+}
+
+message HealthCheckConfig {
+  HealthCheckType type = 1;
+  string http_endpoint = 2;
+  google.protobuf.Duration interval = 3;
+  google.protobuf.Duration timeout = 4;
+  int32 failure_threshold = 5;
+  int32 success_threshold = 6;
+  int32 max_restart_count = 7;
+}
+
+// ============================================================================
+// Deploy RPC Messages
+// ============================================================================
+
+message DeployRequest {
+  string deploy_id = 1;
+  DeploymentTarget target = 2;
+  DeployStrategy strategy = 3;
+  RollingUpdateConfig rolling_config = 4;
+  CanaryConfig canary_config = 5;
+  RollbackPolicy rollback_policy = 6;
+  repeated HealthCheckConfig health_checks = 7;
+  map<string, string> labels = 8;
+  map<string, string> annotations = 9;
+  bool dry_run = 10;
+}
+
+message DeployEvent {
+  string deploy_id = 1;
+  DeploymentPhase phase = 2;
+  string message = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  int32 ready_replicas = 5;
+  int32 desired_replicas = 6;
+  int32 updated_replicas = 7;
+  int32 available_replicas = 8;
+  string current_image = 9;
+  string target_image = 10;
+  int64 revision = 11;
+  bool is_terminal = 12;
+  string error_detail = 13;
+}
+
+// ============================================================================
+// Status RPC Messages
+// ============================================================================
+
+message GetDeploymentStatusRequest {
+  string namespace = 1;
+  string deployment_name = 2;
+}
+
+message DeploymentStatus {
+  string namespace = 1;
+  string deployment_name = 2;
+  DeploymentPhase phase = 3;
+  string current_image = 4;
+  int32 ready_replicas = 5;
+  int32 desired_replicas = 6;
+  int32 updated_replicas = 7;
+  int32 available_replicas = 8;
+  int64 current_revision = 9;
+  HealthStatus health_status = 10;
+  google.protobuf.Timestamp last_updated = 11;
+  repeated PodStatus pods = 12;
+  repeated string conditions = 13;
+}
+
+message PodStatus {
+  string name = 1;
+  string phase = 2;
+  bool ready = 3;
+  int32 restart_count = 4;
+  string node_name = 5;
+  string image = 6;
+  google.protobuf.Timestamp start_time = 7;
+  string message = 8;
+}
+
+// ============================================================================
+// List Deployments RPC Messages
+// ============================================================================
+
+message ListDeploymentsRequest {
+  string namespace = 1;
+  map<string, string> label_selector = 2;
+}
+
+message ListDeploymentsResponse {
+  repeated DeploymentStatus deployments = 1;
+}
+
+// ============================================================================
+// Rollback RPC Messages
+// ============================================================================
+
+message RollbackRequest {
+  string namespace = 1;
+  string deployment_name = 2;
+  int64 target_revision = 3;
+  string reason = 4;
+}
+
+message RollbackResponse {
+  bool success = 1;
+  string message = 2;
+  int64 rolled_back_to_revision = 3;
+  string previous_image = 4;
+  string restored_image = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+// ============================================================================
+// Health Watch RPC Messages
+// ============================================================================
+
+message WatchHealthRequest {
+  string namespace = 1;
+  string deployment_name = 2;
+  google.protobuf.Duration interval = 3;
+  repeated HealthCheckConfig checks = 4;
+}
+
+message HealthEvent {
+  string namespace = 1;
+  string deployment_name = 2;
+  HealthStatus overall_status = 3;
+  repeated HealthCheckResult results = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  string summary = 6;
+}
+
+message HealthCheckResult {
+  HealthCheckType type = 1;
+  HealthStatus status = 2;
+  string message = 3;
+  string target = 4;
+  google.protobuf.Duration latency = 5;
+  google.protobuf.Timestamp checked_at = 6;
+  map<string, string> metadata = 7;
+}
+
+// ============================================================================
+// History RPC Messages
+// ============================================================================
+
+message GetHistoryRequest {
+  string namespace = 1;
+  string deployment_name = 2;
+  int32 limit = 3;
+}
+
+message GetHistoryResponse {
+  repeated DeploymentRevision revisions = 1;
+}
+
+message DeploymentRevision {
+  int64 revision = 1;
+  string image = 2;
+  DeploymentPhase result = 3;
+  DeployStrategy strategy = 4;
+  google.protobuf.Timestamp deployed_at = 5;
+  google.protobuf.Timestamp completed_at = 6;
+  string deployed_by = 7;
+  string rollback_reason = 8;
+  map<string, string> labels = 9;
+  int32 replicas = 10;
+}
+
+// ============================================================================
+// Service Definition
+// ============================================================================
+
+service KubeDeployService {
+  // Deploy initiates a deployment and streams progress events back to the client.
+  // The stream remains open until the deployment reaches a terminal state
+  // (COMPLETED, FAILED, or ROLLED_BACK).
+  rpc Deploy(DeployRequest) returns (stream DeployEvent);
+
+  // GetDeploymentStatus returns the current state of a specific deployment.
+  rpc GetDeploymentStatus(GetDeploymentStatusRequest) returns (DeploymentStatus);
+
+  // ListDeployments returns all tracked deployments, optionally filtered
+  // by namespace and label selectors.
+  rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse);
+
+  // Rollback triggers a manual rollback to a specific revision.
+  // If target_revision is 0, it rolls back to the previous revision.
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
+
+  // WatchHealth opens a server-streaming connection that continuously
+  // emits health check results for the specified deployment.
+  rpc WatchHealth(WatchHealthRequest) returns (stream HealthEvent);
+
+  // GetHistory retrieves the deployment revision history including
+  // images, strategies used, and rollback events.
+  rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
+}
