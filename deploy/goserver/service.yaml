@@ -1,0 +1,50 @@
+# ============================================================================
+# goserver — Kubernetes Service Manifest
+# Exposes the goserver Deployment within the cluster.
+#
+# This ClusterIP Service routes traffic to all pods matching the "app: goserver"
+# label selector. Both stable and canary pods (during canary deployments) will
+# receive traffic through this Service, enabling weighted traffic splitting
+# based on replica ratios.
+#
+# Usage:
+#   kubectl apply -f service.yaml
+#
+# Access within the cluster:
+#   curl http://goserver.default.svc.cluster.local:80
+#
+# Port-forward for local testing:
+#   kubectl port-forward svc/goserver 8080:80
+#   curl http://localhost:8080
+# ============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: goserver
+  namespace: default
+  labels:
+    app: goserver
+    managed-by: kube-deploy
+  annotations:
+    kube-deploy/project: "kube-deploy"
+    kube-deploy/description: "ClusterIP service for goserver test application"
+spec:
+  type: ClusterIP
+  selector:
+    # This selector matches ALL pods with app=goserver, which includes both
+    # the stable deployment and any canary deployment. During a canary rollout,
+    # traffic is split proportionally by the number of pods backing each variant.
+    #
+    # For example, with 3 stable replicas and 1 canary replica, the canary
+    # receives ~25% of traffic naturally through round-robin load balancing.
+    app: goserver
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  # sessionAffinity is set to None so that traffic is distributed evenly
+  # across all pods, which is important for canary analysis — we need the
+  # canary to receive a representative sample of requests.
+  sessionAffinity: None

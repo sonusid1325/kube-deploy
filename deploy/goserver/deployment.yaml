@@ -1,0 +1,141 @@
+# ============================================================================
+# goserver — Kubernetes Deployment Manifest
+# Test application for kube-deploy zero-downtime deployment pipeline
+#
+# Usage:
+#   kubectl apply -f deployment.yaml
+#
+# Versions:
+#   goserver:v1      — healthy baseline
+#   goserver:v2      — healthy new version (for rolling/canary update testing)
+#   goserver:v3-bad  — unhealthy version (for rollback testing, FAIL_AFTER=10s)
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goserver
+  namespace: default
+  labels:
+    app: goserver
+    managed-by: kube-deploy
+  annotations:
+    kubernetes.io/change-cause: "initial deployment of goserver:v1"
+    kube-deploy/project: "kube-deploy"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: goserver
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: goserver
+        version: v1
+      annotations:
+        kube-deploy/managed: "true"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: goserver
+          image: goserver:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: VERSION
+              value: "v1"
+            - name: PORT
+              value: "8080"
+            # Set FAIL_AFTER to simulate failure for rollback testing.
+            # Example: "30s" will cause the app to become unhealthy after 30 seconds.
+            # Leave empty for a healthy deployment.
+            - name: FAIL_AFTER
+              value: ""
+            # FAIL_MODE controls how the app fails when FAIL_AFTER triggers:
+            #   "unhealthy" — returns 503 on /healthz and /readyz (default)
+            #   "crash"     — exits with code 1 to trigger CrashLoopBackOff
+            - name: FAIL_MODE
+              value: "unhealthy"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          # Liveness probe — restarts the container if it fails.
+          # kube-deploy's health monitor also uses /healthz for HTTP probe checks.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          # Readiness probe — removes the pod from Service endpoints if it fails.
+          # This is critical for zero-downtime deployments: new pods must pass
+          # readiness before old pods are terminated.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+            successThreshold: 1
+          # Startup probe — gives the container time to start before liveness
+          # checks begin. Prevents slow-starting containers from being killed.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 10
+            successThreshold: 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      # Ensure pods are spread across nodes for high availability.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: goserver
