@@ -1,65 +1,82 @@
-# kube-deploy
+# kdctl
 
-**Zero-downtime deployment pipeline for Kubernetes clusters with automated rollback and health monitoring.**
+**Zero-downtime Kubernetes deployment pipeline — a single binary with an interactive Bubble Tea TUI, CLI subcommands, built-in gRPC server, automated rollback, and health monitoring.**
 
-Built with Go, Kubernetes client-go, and gRPC.
+Built with Go, Bubble Tea, Kubernetes client-go, and gRPC.
 
 ---
 
 ## Architecture
 
+`kdctl` is a single binary that does everything:
+
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    kdctl (CLI Client)                    │
-│              gRPC client / human interface               │
-└──────────────────────┬──────────────────────────────────┘
-                       │ gRPC
-┌──────────────────────▼──────────────────────────────────┐
-│               kube-deploy-server (gRPC)                  │
-│                                                          │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │
-│  │  Deployer    │  │   Health     │  │   Rollback     │  │
-│  │  Engine      │  │   Monitor    │  │   Controller   │  │
-│  │             │  │              │  │                │  │
-│  │ - Rolling   │  │ - Readiness  │  │ - Auto-revert  │  │
-│  │ - Canary    │  │ - Liveness   │  │ - Revision     │  │
-│  │ - Blue/Green│  │ - Custom     │  │   history      │  │
-│  └──────┬──────┘  └──────┬───────┘  └───────┬────────┘  │
-│         │               │                  │            │
-│  ┌──────▼───────────────▼──────────────────▼────────┐   │
-│  │              Kubernetes Client (pkg/k8s)          │   │
-│  └──────────────────────┬───────────────────────────┘   │
-└─────────────────────────┼───────────────────────────────┘
-                          │
-              ┌───────────▼───────────┐
-              │   Kubernetes Cluster   │
-              │   (goserver test app)  │
-              └───────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         kdctl (single binary)                     │
+│                                                                   │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────────┐   │
+│  │  Bubble Tea  │  │  CLI         │  │  gRPC Server          │   │
+│  │  TUI (ui)    │  │  Subcommands │  │  (kdctl start)        │   │
+│  └──────┬───────┘  └──────┬───────┘  └───────────┬───────────┘   │
+│         │                 │                       │               │
+│  ┌──────▼─────────────────▼───────────────────────▼────────────┐ │
+│  │  ┌───────────┐  ┌────────────┐  ┌──────────────────┐       │ │
+│  │  │ Deployer  │  │   Health   │  │     Rollback     │       │ │
+│  │  │ Engine    │  │   Monitor  │  │     Controller   │       │ │
+│  │  └─────┬─────┘  └──────┬─────┘  └────────┬─────────┘       │ │
+│  │        │               │                  │                 │ │
+│  │  ┌─────▼───────────────▼──────────────────▼──────────────┐  │ │
+│  │  │              Kubernetes Client (pkg/k8s)               │  │ │
+│  │  └──────────────────────┬─────────────────────────────────┘  │ │
+│  └─────────────────────────┼────────────────────────────────────┘ │
+└────────────────────────────┼─────────────────────────────────────┘
+                             │
+                 ┌───────────▼───────────┐
+                 │   Kubernetes Cluster   │
+                 └───────────────────────┘
 ```
+
+All modes (TUI, CLI, server) talk directly to the Kubernetes API — no separate server process required for local usage.
+
+---
 
 ## Features
 
+- **Single binary** — one `kdctl` binary replaces three separate tools (TUI, server, CLI client)
+- **Interactive TUI** — Bubble Tea terminal interface with tabs for status, health, deploy, rollback, history, and logs
+- **CLI subcommands** — scriptable, non-interactive commands for CI/CD pipelines and automation
+- **Built-in gRPC server** — `kdctl start` runs the server for remote or multi-user access
+- **Real-time event streaming** — deploy events stream into the TUI live via `program.Send()`
 - **Zero-downtime rolling updates** — `maxUnavailable: 0`, `maxSurge: 1` by default
 - **Canary deployments** — spin up a canary, run health analysis, promote or abort
 - **Automated rollback** — health monitor detects failures and reverts to last-known-good revision
-- **Real-time streaming** — gRPC server-streaming for deployment progress and health events
+- **Confirmation modals** — destructive actions (deploy, rollback) require explicit confirmation in the TUI
+- **Help overlay** — press `?` for a full keyboard shortcut reference
 - **Pluggable health checks** — pod readiness, restart count, HTTP probes, custom metrics
-- **CLI client (`kdctl`)** — deploy, status, health, rollback, and history commands
 - **Full K8s deployment stack** — Namespace, ServiceAccount, RBAC, ConfigMap, Deployment, Service
-- **Kustomize support** — `kubectl apply -k deploy/k8s/` for one-command deployment
-- **One-command deploy script** — `deploy.sh` with `--dry-run`, `--delete`, `--server-only`, `--goserver-only`
+- **Kustomize support** — `kubectl apply -k deploy/k8s/` for one-command cluster deployment
 - **Configurable policies** — failure thresholds, retry limits, cooldown periods, analysis duration
+- **Cross-compilation** — `make build-all-platforms` for Linux, macOS, and Windows
 - **Test application (`goserver`)** — Go HTTP server with configurable failure modes for E2E testing
+
+---
 
 ## Project Structure
 
 ```
 kube-deploy/
 ├── cmd/
-│   ├── kube-deploy-server/        # gRPC server entrypoint
-│   └── kdctl/                     # CLI client
-├── proto/                         # Protobuf definitions
-├── api/v1/                        # Generated gRPC Go code
+│   └── kdctl/                     # Unified entrypoint (TUI + CLI + server)
+├── internal/
+│   ├── tui/                       # Bubble Tea TUI implementation
+│   │   ├── model.go               #   └─ Core model, Init/Update/View, form navigation
+│   │   ├── views.go               #   └─ Tab rendering, help overlay, confirm modal
+│   │   ├── commands.go            #   └─ Async K8s commands, live event streaming
+│   │   ├── messages.go            #   └─ Bubble Tea message types
+│   │   ├── types.go               #   └─ Data types, tab/field enums
+│   │   ├── styles.go              #   └─ Lipgloss styles, color palette, badges
+│   │   └── helpers.go             #   └─ Utility functions
+│   └── config/                    # Configuration loader (YAML + env vars)
 ├── pkg/
 │   ├── models/                    # Core domain types
 │   ├── deployer/                  # Deployment strategies (rolling, canary)
@@ -67,23 +84,25 @@ kube-deploy/
 │   ├── rollback/                  # Automated rollback controller
 │   ├── k8s/                       # Kubernetes client wrapper
 │   └── server/                    # gRPC server implementation
-├── internal/
-│   └── config/                    # Configuration loader (YAML + env vars)
+├── proto/                         # Protobuf definitions
+├── api/v1/                        # Generated gRPC Go code
 ├── deploy/
 │   ├── k8s/                       # kube-deploy server K8s manifests
-│   │   ├── namespace.yaml         #   └─ Namespace
-│   │   ├── serviceaccount.yaml    #   └─ ServiceAccount
-│   │   ├── rbac.yaml              #   └─ ClusterRole + ClusterRoleBinding
-│   │   ├── configmap.yaml         #   └─ Server configuration
-│   │   ├── deployment.yaml        #   └─ Server Deployment (2 replicas)
-│   │   ├── service.yaml           #   └─ ClusterIP Service (gRPC :9090)
-│   │   └── kustomization.yaml     #   └─ Kustomize orchestration
+│   │   ├── namespace.yaml
+│   │   ├── serviceaccount.yaml
+│   │   ├── rbac.yaml
+│   │   ├── configmap.yaml
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   └── kustomization.yaml
 │   ├── goserver/                  # Test app: Dockerfile, K8s manifests
 │   └── deploy.sh                  # One-command deploy/teardown script
-├── Dockerfile                     # Multi-stage build for kube-deploy-server
+├── Dockerfile                     # Multi-stage build for kdctl
 ├── docs/                          # Roadmap and documentation
 └── Makefile                       # Build, test, proto, deploy targets
 ```
+
+---
 
 ## Quick Start
 
@@ -98,68 +117,223 @@ kube-deploy/
 ### Build
 
 ```bash
-# Build both server and CLI
+# Build kdctl
 make build
 
-# Outputs:
-#   bin/kube-deploy-server
-#   bin/kdctl
+# Output: bin/kdctl
+
+# Install to $GOPATH/bin
+make install
+
+# Cross-compile for all platforms
+make build-all-platforms
 ```
 
-### Run the Server
+### Launch the Interactive TUI
 
 ```bash
-# Uses ~/.kube/config by default
-./bin/kube-deploy-server --port 9090
+# Target a deployment in the default namespace
+kdctl -n default -d goserver
 
-# With debug logging
-./bin/kube-deploy-server --port 9090 --log-format console --log-level debug
+# Or use the explicit subcommand
+kdctl ui -n default -d goserver
 
-# With in-cluster config (when running inside a K8s pod)
-./bin/kube-deploy-server --in-cluster --port 9090
+# Use a specific kubeconfig and context
+kdctl -d myapp --kubeconfig ~/.kube/prod.yaml --context prod-cluster
+
+# Use in-cluster config (when running inside a pod)
+kdctl -d myapp --in-cluster
 ```
 
-> **Note:** `--in-cluster` only works when running inside a Kubernetes pod with a mounted ServiceAccount token. For local development, omit it.
+The TUI connects directly to your Kubernetes cluster — no server process required.
 
-### Use the CLI
+### CLI Subcommands (Non-Interactive)
 
 ```bash
 # Check deployment status
-./bin/kdctl status -n default -d goserver --server localhost:9090
+kdctl status -n default -d goserver
 
 # Check health
-./bin/kdctl health -n default -d goserver --server localhost:9090
+kdctl health -n default -d goserver
 
-# View revision history
-./bin/kdctl history -n default -d goserver --server localhost:9090
-
-# Rolling update
-./bin/kdctl deploy -n default -d goserver --image goserver:v2 --strategy rolling --server localhost:9090
+# Deploy a new image (rolling update)
+kdctl deploy -n default -d goserver --image goserver:v2
 
 # Canary deployment
-./bin/kdctl deploy -n default -d goserver --image goserver:v2 --strategy canary --server localhost:9090
+kdctl deploy -n default -d goserver --image goserver:v2 --strategy canary
 
 # Dry run (preview without applying)
-./bin/kdctl deploy -n default -d goserver --image goserver:v2 --dry-run --server localhost:9090
+kdctl deploy -n default -d goserver --image goserver:v2 --dry-run
 
-# Watch deployment status (streaming)
-./bin/kdctl status -n default -d goserver --watch --server localhost:9090
+# Rollback to previous revision
+kdctl rollback -n default -d goserver
 
-# Watch health events (streaming)
-./bin/kdctl health -n default -d goserver --watch --server localhost:9090
+# Rollback to a specific revision
+kdctl rollback -n default -d goserver --revision 3
 
-# Manual rollback to a specific revision
-./bin/kdctl rollback -n default -d goserver --revision 1 --server localhost:9090
+# View revision history
+kdctl history -n default -d goserver
+
+# Watch status continuously
+kdctl status -n default -d goserver --watch
+
+# Watch health continuously
+kdctl health -n default -d goserver --watch --interval 5s
+
+# Start the gRPC server
+kdctl start --port 9090 --log-level debug --log-format console
+
+# Print version
+kdctl version
 ```
 
-### Example CLI Output
+---
+
+## TUI Guide
+
+### Tabs
+
+| Tab | Key | Description |
+|-----|-----|-------------|
+| **Status** | `1` | Deployment overview, replica counts, pod table, conditions |
+| **Health** | `2` | Overall health badge, progress bar, per-pod health icons |
+| **Deploy** | `3` | Form to submit a new deployment (image, strategy, params) |
+| **Rollback** | `4` | Form to rollback to a previous revision with reason |
+| **History** | `5` | Revision history table with images, timestamps, and notes |
+| **Logs** | `6` | Timestamped activity log of all TUI actions and events |
+
+### Keyboard Shortcuts
+
+Press `?` at any time to see the help overlay.
+
+| Key | Action |
+|-----|--------|
+| `tab` / `shift+tab` | Switch between tabs |
+| `1`–`6` | Jump to tab by number |
+| `r` | Refresh current tab data |
+| `?` | Toggle help overlay |
+| `q` / `ctrl+c` | Quit |
+| `↑` / `↓` | Navigate form fields |
+| `enter` | Next field / submit (shows confirmation) |
+| `←` / `→` | Toggle strategy selector / dry-run checkbox |
+| `space` | Toggle checkbox |
+| `y` / `enter` | Confirm action in modal |
+| `n` / `esc` | Cancel action in modal |
+
+### Workflow Example
+
+1. Launch: `kdctl -d goserver`
+2. Review current state in the **Status** tab (auto-refreshes every 3 seconds)
+3. Press `3` to switch to the **Deploy** tab
+4. Type the new image (e.g. `goserver:v2`), pick strategy, set options
+5. Press `↓` to navigate to **Deploy** button, then `enter`
+6. A **confirmation modal** appears — press `y` to confirm
+7. Watch real-time deploy events stream in the **Events** section
+8. After completion, check **Status** and **History** tabs for updated state
+9. If something goes wrong, use the **Rollback** tab to revert
+
+---
+
+## kdctl Subcommands Reference
+
+### `kdctl` / `kdctl ui` — Interactive TUI
+
+```bash
+kdctl -n <namespace> -d <deployment>
+kdctl ui -n <namespace> -d <deployment>
+```
+
+Launches the Bubble Tea TUI targeting a specific Kubernetes deployment. Talks directly to the cluster via kubeconfig.
+
+### `kdctl start` — gRPC Server
+
+```bash
+kdctl start [--port 9090] [--host 0.0.0.0] [--log-format console] [--log-level debug]
+```
+
+Starts the kube-deploy gRPC server for remote or multi-user access. Useful for CI pipelines, shared environments, or when running inside a cluster.
+
+```bash
+# Local development
+kdctl start --port 9090 --log-format console --log-level debug
+
+# In-cluster
+kdctl start --in-cluster --port 9090
+```
+
+### `kdctl deploy` — Deploy
+
+```bash
+kdctl deploy -d <deployment> --image <image> [flags]
+```
+
+| Flag | Description | Default |
+|---|---|---|
+| `--deployment, -d` | Deployment name (required) | — |
+| `--image` | Target container image (required) | — |
+| `--strategy` | `rolling` or `canary` | `rolling` |
+| `--container, -c` | Container name (multi-container pods) | — |
+| `--max-unavailable` | Max unavailable pods | `0` |
+| `--max-surge` | Max surge pods | `1` |
+| `--canary-replicas` | Number of canary replicas | `1` |
+| `--analysis-duration` | Canary health analysis duration | `60s` |
+| `--success-threshold` | Consecutive successes for canary promotion | `3` |
+| `--dry-run` | Preview without applying | `false` |
+| `--timeout` | Deployment timeout | `5m` |
+
+### `kdctl status` — Deployment Status
+
+```bash
+kdctl status -d <deployment> [-w] [-i 2s]
+```
+
+Shows current deployment state: phase, image, replicas, revision, health, conditions, and pods.
+
+Use `--watch` to continuously poll.
+
+### `kdctl health` — Health Check
+
+```bash
+kdctl health -d <deployment> [-w] [-i 5s]
+```
+
+Shows overall health status, ready pod count, progress bar, and per-pod details.
+
+Use `--watch` to continuously poll.
+
+### `kdctl rollback` — Rollback
+
+```bash
+kdctl rollback -d <deployment> [--revision <N>] [--reason "..."]
+```
+
+Rolls back to a specific revision (or previous if `--revision 0`).
+
+### `kdctl history` — Revision History
+
+```bash
+kdctl history -d <deployment> [--limit 10]
+```
+
+Shows the deployment's revision history with images, replica counts, timestamps, and rollback notes.
+
+### `kdctl version` — Version Info
+
+```bash
+kdctl version
+```
+
+---
+
+## Example CLI Output
 
 **Status:**
 ```
 ╭─ Deployment Status: default/goserver
 ╰─────────────────────────────────────
   Phase:           ✅ COMPLETED
-  Image:           goserver-nmap:latest
+  Image:           goserver:v2
+  Strategy:        RollingUpdate
   Replicas:        3/3 ready, 3 updated, 3 available
   Revision:        2
   Health:          ✅ HEALTHY
@@ -171,9 +345,9 @@ make build
 
   Pods:
     NAME                                          STATUS       READY   RESTARTS   IMAGE
-    goserver-6454b855b5-6qtw9                     Running      ✓       0          goserver-nmap:latest
-    goserver-6454b855b5-rsh8r                     Running      ✓       0          goserver-nmap:latest
-    goserver-6454b855b5-xhpcc                     Running      ✓       0          goserver-nmap:latest
+    goserver-6454b855b5-6qtw9                     Running      ✓       0          goserver:v2
+    goserver-6454b855b5-rsh8r                     Running      ✓       0          goserver:v2
+    goserver-6454b855b5-xhpcc                     Running      ✓       0          goserver:v2
 ```
 
 **Health:**
@@ -182,11 +356,34 @@ make build
 ╰──────────────────────────
   Overall: ✅ HEALTHY
   Ready:   3/3
+  Progress: ██████████████████████████████ 100%
 
   Pods:
-    ✓ goserver-6454b855b5-6qtw9                restarts=0    goserver-nmap:latest
-    ✓ goserver-6454b855b5-rsh8r                restarts=0    goserver-nmap:latest
-    ✓ goserver-6454b855b5-xhpcc                restarts=0    goserver-nmap:latest
+    ✓ goserver-6454b855b5-6qtw9                       restarts=0    goserver:v2
+    ✓ goserver-6454b855b5-rsh8r                       restarts=0    goserver:v2
+    ✓ goserver-6454b855b5-xhpcc                       restarts=0    goserver:v2
+
+  Checked at: 16:10:42
+```
+
+**Deploy:**
+```
+╭─ Deploying default/goserver → goserver:v2 (strategy: rolling)
+╰──────────────────────────────────────────────────────────────
+  Deploy ID: deploy-goserver-1741441543
+
+  ── ⏳ PENDING ──
+  [16:10:43] deployment default/goserver queued with strategy rolling
+
+  ── 🔄 IN PROGRESS ──
+  [16:10:43] updating deployment default/goserver from goserver:v1 to goserver:v2 [3/3 ready]
+  [16:10:45] Waiting for rollout: 1 out of 3 new replicas updated [1/3 ready]
+  [16:10:48] Waiting for rollout: 2 out of 3 new replicas updated [2/3 ready]
+
+  ── ✅ COMPLETED ──
+  [16:10:52] rolling update complete: default/goserver now running goserver:v2 (3/3 ready) [3/3 ready]
+
+  ✓ Deployment completed successfully!
 ```
 
 **History:**
@@ -194,24 +391,39 @@ make build
 ╭─ Deployment History: default/goserver
 ╰──────────────────────────────────────
 
-  REVISION   IMAGE                   REPLICAS   DEPLOYED AT          NOTES
-  --------   -----                   --------   -----------          -----
-  1          goserver:latest         0          2026-03-08 14:39:02
-  2          goserver-nmap:latest    3          2026-03-08 14:41:18
+  REVISION   IMAGE                                          REPLICAS   DEPLOYED AT          NOTES
+  --------   -----                                          --------   -----------          -----
+  2          goserver:v2                                    3          2026-03-08 16:10:52
+  1          goserver:v1                                    0          2026-03-08 14:39:02
 ```
+
+---
+
+## Global Flags
+
+These flags are available on all subcommands:
+
+| Flag | Short | Description | Default |
+|---|---|---|---|
+| `--namespace` | `-n` | Kubernetes namespace | `default` |
+| `--kubeconfig` | | Path to kubeconfig file | `~/.kube/config` or `KUBECONFIG` env |
+| `--context` | | Kubernetes context to use | current context |
+| `--in-cluster` | | Use in-cluster config | `false` |
+| `--config` | | Path to kdctl config YAML | — |
+| `--log-level` | | Log level: `debug`, `info`, `warn`, `error` | `info` |
 
 ---
 
 ## Docker Images
 
-### kube-deploy-server
+### kdctl
 
 ```bash
-# Build the server image
-make docker-server
+# Build the kdctl Docker image
+make docker
 
-# Or manually with version info
-docker build -t kube-deploy-server:latest \
+# Or manually
+docker build -t kdctl:latest \
   --build-arg VERSION=v1.0.0 \
   --build-arg COMMIT=$(git rev-parse --short HEAD) \
   --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
@@ -260,37 +472,20 @@ kubectl delete -k deploy/k8s/
 
 # Tear down everything
 ./deploy/deploy.sh --delete
-
-# Custom rollout timeout
-./deploy/deploy.sh --timeout 180s
 ```
 
 ### Option 3: Makefile targets
 
 ```bash
-# Deploy everything
-make deploy-all
-
-# Deploy only the server stack (namespace, SA, RBAC, configmap, service, deployment)
-make deploy-server
-
-# Deploy only goserver
-make deploy-goserver
-
-# Remove everything
-make undeploy-all
-
-# Remove only the server
-make undeploy-server
-
-# Remove only goserver
-make undeploy-goserver
+make deploy-all        # Deploy everything
+make deploy-server     # Deploy the server stack
+make deploy-goserver   # Deploy goserver
+make undeploy-all      # Remove everything
 ```
 
 ### Option 4: Manual kubectl
 
 ```bash
-# Server stack (apply in order)
 kubectl apply -f deploy/k8s/namespace.yaml
 kubectl apply -f deploy/k8s/serviceaccount.yaml
 kubectl apply -f deploy/k8s/rbac.yaml
@@ -298,12 +493,11 @@ kubectl apply -f deploy/k8s/configmap.yaml
 kubectl apply -f deploy/k8s/service.yaml
 kubectl apply -f deploy/k8s/deployment.yaml
 
-# goserver test app
 kubectl apply -f deploy/goserver/deployment.yaml
 kubectl apply -f deploy/goserver/service.yaml
 ```
 
-### What gets deployed
+### What Gets Deployed
 
 | Resource | Namespace | Description |
 |---|---|---|
@@ -315,14 +509,11 @@ kubectl apply -f deploy/goserver/service.yaml
 | Deployment `kube-deploy-server` | `kube-deploy` | 2-replica gRPC server with probes and security context |
 | Service `kube-deploy-server` | `kube-deploy` | ClusterIP on port 9090 |
 
-### Connecting to the server in-cluster
+### Connecting to the Server In-Cluster
 
 ```bash
-# Port-forward for local CLI access
+# Port-forward for local access
 kubectl port-forward -n kube-deploy svc/kube-deploy-server 9090:9090
-
-# Then use kdctl
-./bin/kdctl status -n default -d goserver --server localhost:9090
 ```
 
 ---
@@ -335,7 +526,7 @@ The default strategy. Updates the Deployment image in-place with zero-downtime g
 
 1. Patches the Deployment with the new image, `maxUnavailable=0`, `maxSurge=1`
 2. Polls rollout status until all replicas are updated and ready
-3. Streams progress events to the client in real time
+3. Streams progress events to the TUI or CLI in real time
 4. On timeout or failure, emits a `FAILED` event (triggering auto-rollback if enabled)
 
 ### Canary
@@ -361,7 +552,7 @@ The health monitor continuously runs pluggable checks against deployments:
 | **Restart Count** | Detects CrashLoopBackOff and restart count spikes |
 | **HTTP Probe** | Sends GET requests to a configurable endpoint on each pod |
 
-Health events are streamed to clients via gRPC and trigger automated rollback when the failure threshold is exceeded.
+Health events are displayed in the TUI's Health tab and trigger automated rollback when the failure threshold is exceeded.
 
 ---
 
@@ -393,9 +584,7 @@ rollbackPolicy:
 
 ## Configuration
 
-The server reads configuration from YAML, environment variables, and CLI flags (in increasing precedence order).
-
-The default configuration is provided via ConfigMap at [`deploy/k8s/configmap.yaml`](deploy/k8s/configmap.yaml).
+kdctl reads configuration from YAML, environment variables, and CLI flags (in increasing precedence order).
 
 ### Environment Variables
 
@@ -416,6 +605,8 @@ The default configuration is provided via ConfigMap at [`deploy/k8s/configmap.ya
 
 ## gRPC API
 
+When running `kdctl start`, the following gRPC service is exposed:
+
 | Method | Type | Description |
 |---|---|---|
 | `Deploy` | Server-stream | Initiate a deployment, stream progress |
@@ -431,7 +622,7 @@ See [`proto/kube_deploy.proto`](proto/kube_deploy.proto) for the full service de
 
 ## Testing with goserver
 
-The `goserver` test application is a simple Go HTTP server designed for testing kube-deploy:
+The `goserver` test application is a simple Go HTTP server designed for testing kdctl:
 
 - `/healthz` — liveness endpoint (returns 200 or 503)
 - `/readyz` — readiness endpoint (returns 200 or 503)
@@ -487,6 +678,12 @@ make cover
 # Run the linter
 make lint
 
+# Launch the TUI in development mode
+make run
+
+# Start the gRPC server in development mode
+make run-server
+
 # See all available targets
 make help
 ```
@@ -495,60 +692,25 @@ make help
 
 | Target | Description |
 |---|---|
-| `build` | Build server and CLI binaries |
-| `build-server` | Build `kube-deploy-server` |
-| `build-cli` | Build `kdctl` |
-| `proto` | Generate Go code from protobuf |
+| `build` | Build the `kdctl` binary to `bin/kdctl` |
+| `install` | Install `kdctl` to `$GOPATH/bin` |
+| `build-all-platforms` | Cross-compile for Linux/macOS/Windows (amd64 + arm64) |
+| `run` | Build and launch the TUI |
+| `run-server` | Build and start the gRPC server |
 | `test` | Run unit tests |
 | `test-race` | Run tests with race detector |
 | `test-integration` | Run integration tests |
-| `cover` | Generate coverage report |
+| `cover` | Generate HTML coverage report |
 | `lint` | Run golangci-lint |
-| `docker-server` | Build kube-deploy-server Docker image |
-| `docker-goserver` | Build goserver Docker image |
-| `docker-goserver-v1` | Build goserver:v1 (healthy) |
-| `docker-goserver-v2` | Build goserver:v2 (healthy, new version) |
-| `docker-goserver-v3-bad` | Build goserver:v3-bad (unhealthy) |
+| `vet` | Run go vet |
+| `fmt` | Format all Go files |
+| `tidy` | Tidy and verify Go modules |
+| `proto` | Generate protobuf Go code |
+| `docker` | Build the kdctl Docker image |
+| `docker-goserver` | Build the goserver test image |
 | `deploy-all` | Deploy server + goserver to cluster |
-| `deploy-server` | Deploy kube-deploy server stack |
-| `deploy-goserver` | Deploy goserver test app |
+| `deploy-server` | Deploy only the server stack |
+| `deploy-goserver` | Deploy only goserver |
 | `undeploy-all` | Remove everything from cluster |
-| `undeploy-server` | Remove kube-deploy server stack |
-| `undeploy-goserver` | Remove goserver test app |
-| `run-server` | Build and run the server locally |
-| `install-tools` | Install development tools |
 | `clean` | Remove build artifacts |
-
----
-
-## Tech Stack
-
-| Component | Technology |
-|---|---|
-| Language | Go 1.23+ |
-| Kubernetes client | client-go v0.31.x |
-| RPC framework | gRPC + Protocol Buffers |
-| CLI framework | Cobra |
-| Configuration | YAML + envconfig |
-| Logging | Zap (structured JSON/console) |
-| Container runtime | Docker / containerd |
-| Base image | `gcr.io/distroless/static-debian12:nonroot` |
-| Orchestration | Kustomize |
-| Testing | Go testing + testify |
-
-## Roadmap
-
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the full project roadmap and future enhancements including:
-
-- Blue/Green strategy
-- Prometheus metric-based canary analysis
-- Webhook notifications (Slack, PagerDuty)
-- Multi-cluster support
-- GitOps mode
-- Web dashboard
-- RBAC with Kubernetes ServiceAccount tokens
-- Helm/Kustomize manifest support
-
-## License
-
-MIT
+| `help` | Show all targets |

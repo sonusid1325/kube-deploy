@@ -2,9 +2,7 @@
 # kube-deploy — Zero-Downtime Kubernetes Deployment Pipeline
 # ============================================================================
 
-BINARY_SERVER := kube-deploy-server
-BINARY_CLI    := kdctl
-BINARY_TUI    := kube-deploy
+BINARY        := kdctl
 BIN_DIR       := bin
 MODULE        := github.com/sonu/kube-deploy
 PROTO_DIR     := proto
@@ -33,9 +31,11 @@ YELLOW := \033[0;33m
 CYAN   := \033[0;36m
 RESET  := \033[0m
 
-.PHONY: all build build-tui build-server build-cli clean test test-unit test-integration test-race \
-        lint vet fmt proto proto-check tidy vendor help run-server run-tui docker-server docker-goserver \
-        install-tools cover deploy-all deploy-server deploy-goserver undeploy-all undeploy-server undeploy-goserver
+.PHONY: all build clean test test-unit test-integration test-race \
+        lint vet fmt proto proto-check tidy vendor help run run-server \
+        docker docker-goserver docker-goserver-v1 docker-goserver-v2 docker-goserver-v3-bad \
+        install-tools cover deploy-all deploy-server deploy-goserver \
+        undeploy-all undeploy-server undeploy-goserver install
 
 # ============================================================================
 # Default target
@@ -47,23 +47,16 @@ all: tidy fmt vet build test ## Build and test everything
 # Build targets
 # ============================================================================
 
-build: build-tui build-server build-cli ## Build all binaries (TUI + server + CLI)
-	@echo "$(GREEN)✓ Build complete$(RESET)"
-
-build-tui: ## Build the kube-deploy TUI binary (single binary, no server needed)
-	@echo "$(CYAN)Building $(BINARY_TUI) (Bubble Tea TUI)...$(RESET)"
+build: ## Build the kdctl binary (single binary: TUI + CLI + server)
+	@echo "$(CYAN)Building $(BINARY)...$(RESET)"
 	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_TUI) ./cmd/kube-deploy
+	$(GOBUILD) -o $(BIN_DIR)/$(BINARY) ./cmd/kdctl
+	@echo "$(GREEN)✓ Build complete: $(BIN_DIR)/$(BINARY)$(RESET)"
 
-build-server: ## Build the kube-deploy-server binary (gRPC server)
-	@echo "$(CYAN)Building $(BINARY_SERVER)...$(RESET)"
-	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_SERVER) ./cmd/kube-deploy-server
-
-build-cli: ## Build the kdctl CLI binary (gRPC client)
-	@echo "$(CYAN)Building $(BINARY_CLI)...$(RESET)"
-	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_CLI) ./cmd/kdctl
+install: build ## Install kdctl to $GOPATH/bin
+	@echo "$(CYAN)Installing $(BINARY)...$(RESET)"
+	cp $(BIN_DIR)/$(BINARY) $(shell go env GOPATH)/bin/$(BINARY)
+	@echo "$(GREEN)✓ Installed to $(shell go env GOPATH)/bin/$(BINARY)$(RESET)"
 
 # ============================================================================
 # Proto generation
@@ -165,26 +158,26 @@ install-tools: ## Install required development tools
 # Run targets
 # ============================================================================
 
-run-tui: build-tui ## Build and launch the kube-deploy TUI
-	@echo "$(CYAN)Launching kube-deploy TUI...$(RESET)"
-	./$(BIN_DIR)/$(BINARY_TUI) -n default -d goserver
+run: build ## Build and launch the kdctl TUI (interactive mode)
+	@echo "$(CYAN)Launching kdctl TUI...$(RESET)"
+	./$(BIN_DIR)/$(BINARY) -n default -d goserver
 
-run-server: build-server ## Build and run the kube-deploy-server
-	@echo "$(CYAN)Starting kube-deploy-server...$(RESET)"
-	./$(BIN_DIR)/$(BINARY_SERVER) --port 9090 --log-format console --log-level debug
+run-server: build ## Build and start the gRPC server via kdctl start
+	@echo "$(CYAN)Starting gRPC server via kdctl start...$(RESET)"
+	./$(BIN_DIR)/$(BINARY) start --port 9090 --log-format console --log-level debug
 
 # ============================================================================
 # Docker targets
 # ============================================================================
 
-docker-server: ## Build the kube-deploy-server Docker image
-	@echo "$(CYAN)Building kube-deploy-server Docker image...$(RESET)"
-	docker build -t kube-deploy-server:latest \
+docker: ## Build the kdctl Docker image
+	@echo "$(CYAN)Building kdctl Docker image...$(RESET)"
+	docker build -t kdctl:latest \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-f Dockerfile .
-	@echo "$(GREEN)✓ kube-deploy-server image built$(RESET)"
+	@echo "$(GREEN)✓ kdctl image built$(RESET)"
 
 docker-goserver: ## Build the goserver test Docker image
 	@echo "$(CYAN)Building goserver Docker image...$(RESET)"
@@ -248,6 +241,22 @@ undeploy-goserver: ## Remove goserver from the cluster
 	@echo "$(GREEN)✓ goserver removed$(RESET)"
 
 # ============================================================================
+# Cross-compilation
+# ============================================================================
+
+.PHONY: build-all-platforms
+build-all-platforms: ## Cross-compile for Linux, macOS, and Windows (amd64 + arm64)
+	@echo "$(CYAN)Cross-compiling $(BINARY) for all platforms...$(RESET)"
+	@mkdir -p $(BIN_DIR)
+	GOOS=linux   GOARCH=amd64 $(GOBUILD) -o $(BIN_DIR)/$(BINARY)-linux-amd64     ./cmd/kdctl
+	GOOS=linux   GOARCH=arm64 $(GOBUILD) -o $(BIN_DIR)/$(BINARY)-linux-arm64     ./cmd/kdctl
+	GOOS=darwin  GOARCH=amd64 $(GOBUILD) -o $(BIN_DIR)/$(BINARY)-darwin-amd64    ./cmd/kdctl
+	GOOS=darwin  GOARCH=arm64 $(GOBUILD) -o $(BIN_DIR)/$(BINARY)-darwin-arm64    ./cmd/kdctl
+	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BIN_DIR)/$(BINARY)-windows-amd64.exe ./cmd/kdctl
+	@echo "$(GREEN)✓ Cross-compilation complete$(RESET)"
+	@ls -lh $(BIN_DIR)/$(BINARY)-*
+
+# ============================================================================
 # Cleanup
 # ============================================================================
 
@@ -263,12 +272,23 @@ clean: ## Remove build artifacts
 
 help: ## Show this help message
 	@echo ""
-	@echo "$(CYAN)kube-deploy$(RESET) — Zero-Downtime Kubernetes Deployment Pipeline"
+	@echo "$(CYAN)kdctl$(RESET) — Zero-Downtime Kubernetes Deployment Pipeline"
 	@echo ""
 	@echo "$(YELLOW)Usage:$(RESET)"
 	@echo "  make $(GREEN)<target>$(RESET)"
 	@echo ""
 	@echo "$(YELLOW)Targets:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(RESET) %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-24s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)kdctl subcommands:$(RESET)"
+	@echo "  $(GREEN)kdctl$(RESET)                      Launch the interactive Bubble Tea TUI"
+	@echo "  $(GREEN)kdctl ui -d <deploy>$(RESET)       Same as above (explicit)"
+	@echo "  $(GREEN)kdctl start$(RESET)                Start the gRPC server"
+	@echo "  $(GREEN)kdctl deploy$(RESET)               Deploy (non-interactive)"
+	@echo "  $(GREEN)kdctl status$(RESET)               Check deployment status"
+	@echo "  $(GREEN)kdctl health$(RESET)               Check deployment health"
+	@echo "  $(GREEN)kdctl rollback$(RESET)             Rollback a deployment"
+	@echo "  $(GREEN)kdctl history$(RESET)              Show revision history"
+	@echo "  $(GREEN)kdctl version$(RESET)              Print version info"
 	@echo ""
