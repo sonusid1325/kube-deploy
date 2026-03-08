@@ -1,0 +1,18 @@
+# ============================================================================
+# kube-deploy — Namespace
+# Isolates all kube-deploy components into a dedicated namespace.
+#
+# Usage:
+#   kubectl apply -f namespace.yaml
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-deploy
+  labels:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/part-of: kube-deploy
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Zero-downtime Kubernetes deployment pipeline — control plane namespace"

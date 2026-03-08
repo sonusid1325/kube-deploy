@@ -1,0 +1,87 @@
+# ============================================================================
+# kube-deploy — ConfigMap
+# Default server configuration for the kube-deploy gRPC server.
+# Mounted into the server pod at /etc/kube-deploy/config.yaml
+#
+# Usage:
+#   kubectl apply -f configmap.yaml
+#
+# Override:
+#   Edit the config.yaml data below, or use environment variables
+#   (env vars take precedence over file-based config).
+# ============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-deploy-config
+  namespace: kube-deploy
+  labels:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: kube-deploy
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Default configuration for the kube-deploy gRPC server"
+data:
+  config.yaml: |
+    # ======================================================================
+    # kube-deploy server configuration
+    # ======================================================================
+
+    server:
+      host: "0.0.0.0"
+      port: 9090
+      maxRecvMsgSize: 16777216    # 16 MiB
+      maxSendMsgSize: 16777216    # 16 MiB
+      shutdownTimeout: 30s
+
+    kubernetes:
+      # Leave kubeconfig empty to use in-cluster config (ServiceAccount token).
+      kubeconfig: ""
+      context: ""
+      inCluster: true
+      qps: 50
+      burst: 100
+      timeout: 30s
+      retryAttempts: 3
+      retryDelay: 2s
+
+    deploy:
+      strategy: "rolling"
+      rolloutTimeout: 300s        # 5 minutes
+      progressDeadline: 600s      # 10 minutes
+      pollInterval: 5s
+      maxUnavailable: 0           # zero-downtime: no pods taken down before new ones are ready
+      maxSurge: 1                 # one extra pod during rollout
+      canaryPercent: 10
+      canaryAnalysisDuration: 120s
+      canarySuccessThreshold: 3
+
+    health:
+      enabled: true
+      checkInterval: 10s
+      timeout: 5s
+      failureThreshold: 3
+      successThreshold: 2
+      enableHTTPProbe: true
+      httpProbePath: "/healthz"
+      httpProbePort: 8080
+      enableRestartCheck: true
+      maxRestartCount: 5
+      restartWindowDuration: 300s # 5 minutes
+
+    rollback:
+      enabled: true
+      maxRetries: 2
+      cooldown: 60s
+      healthCheckInterval: 10s
+      healthCheckTimeout: 120s
+      failureThreshold: 3
+      successThreshold: 2
+
+    logging:
+      level: "info"               # debug | info | warn | error
+      format: "json"              # json | console
+      enableCaller: false
+      enableStacktrace: false

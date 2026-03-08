@@ -1,0 +1,114 @@
+# ============================================================================
+# kube-deploy — RBAC Configuration
+# ClusterRole and ClusterRoleBinding granting the kube-deploy server
+# permissions to manage Deployments, ReplicaSets, Pods, Services, and Events
+# across all namespaces for zero-downtime deployment orchestration.
+#
+# Usage:
+#   kubectl apply -f rbac.yaml
+#
+# Notes:
+#   - ClusterRole is used (not Role) because kube-deploy needs to operate
+#     across multiple namespaces.
+#   - Follows least-privilege: only the verbs actually needed are granted.
+#   - The server needs write access to Deployments and ReplicaSets for
+#     rolling updates, canary deployments, and rollbacks.
+#   - Read access to Pods and Events is required for health monitoring.
+# ============================================================================
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-deploy-server
+  labels:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: kube-deploy
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "ClusterRole granting kube-deploy server permissions to manage deployments and monitor cluster health"
+rules:
+  # ── Deployments ───────────────────────────────────────────────────────────
+  # Full CRUD + patch for rolling updates, canary creation, and rollbacks.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read deployment scale sub-resource for canary scaling operations.
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+
+  # Read rollout status for tracking deployment progress.
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]
+    verbs: ["get", "watch"]
+
+  # ── ReplicaSets ───────────────────────────────────────────────────────────
+  # Read + list for revision history lookups during rollbacks.
+  # Patch for rollback-by-revision (setting deployment to a prior RS template).
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+
+  # ── Pods ──────────────────────────────────────────────────────────────────
+  # Read-only: health monitoring, readiness checks, restart count tracking.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Read pod logs for debugging failed deployments.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  # Read pod status for health probes.
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get"]
+
+  # ── Services ──────────────────────────────────────────────────────────────
+  # Read + patch for canary traffic splitting via label selector updates.
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+
+  # ── Events ────────────────────────────────────────────────────────────────
+  # Read events to correlate deployment progress and failures.
+  # Create events to emit kube-deploy-specific lifecycle events.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create", "patch"]
+
+  # ── ConfigMaps ────────────────────────────────────────────────────────────
+  # Read-only: loading configuration from ConfigMaps if mounted externally.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+  # ── Namespaces ────────────────────────────────────────────────────────────
+  # Read-only: validating that target namespaces exist before deploying.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-deploy-server
+  labels:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: kube-deploy
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "Binds the kube-deploy-server ClusterRole to the kube-deploy-server ServiceAccount"
+subjects:
+  - kind: ServiceAccount
+    name: kube-deploy-server
+    namespace: kube-deploy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-deploy-server

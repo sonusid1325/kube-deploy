@@ -1,0 +1,52 @@
+# ============================================================================
+# kube-deploy — Kustomization
+# Orchestrates the deployment of all kube-deploy Kubernetes resources
+# in the correct dependency order.
+#
+# Usage:
+#   kubectl apply -k deploy/k8s/
+#
+# Preview:
+#   kubectl kustomize deploy/k8s/
+# ============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: kube-deploy
+  annotations:
+    description: "Zero-downtime Kubernetes deployment pipeline — full stack"
+
+# ── Namespace ───────────────────────────────────────────────────────────────
+namespace: kube-deploy
+
+# ── Resources (applied in order) ───────────────────────────────────────────
+resources:
+  # 1. Namespace must exist before anything else.
+  - namespace.yaml
+  # 2. ServiceAccount for pod identity.
+  - serviceaccount.yaml
+  # 3. RBAC — ClusterRole + ClusterRoleBinding for API access.
+  - rbac.yaml
+  # 4. ConfigMap with server configuration.
+  - configmap.yaml
+  # 5. Service so the DNS record is available when pods start.
+  - service.yaml
+  # 6. Deployment — the kube-deploy gRPC server itself.
+  - deployment.yaml
+
+# ── Common Labels ───────────────────────────────────────────────────────────
+commonLabels:
+  app.kubernetes.io/part-of: kube-deploy
+  app.kubernetes.io/managed-by: kustomize
+
+# ── Common Annotations ─────────────────────────────────────────────────────
+commonAnnotations:
+  kube-deploy/managed: "true"
+
+# ── Images (override defaults here or via CLI) ─────────────────────────────
+images:
+  - name: kube-deploy-server
+    newName: kube-deploy-server
+    newTag: latest

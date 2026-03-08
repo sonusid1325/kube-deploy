@@ -1,0 +1,221 @@
+# ============================================================================
+# kube-deploy — Server Deployment
+# Deploys the kube-deploy gRPC server into the cluster.
+#
+# The server orchestrates zero-downtime deployments, monitors health,
+# and performs automated rollbacks for target applications.
+#
+# Usage:
+#   kubectl apply -f deployment.yaml
+#
+# Prerequisites:
+#   - namespace.yaml (kube-deploy namespace)
+#   - serviceaccount.yaml (kube-deploy-server SA)
+#   - rbac.yaml (ClusterRole + ClusterRoleBinding)
+#   - configmap.yaml (server configuration)
+#
+# Image:
+#   Build and push the server image before deploying:
+#     docker build -t <registry>/kube-deploy-server:latest -f Dockerfile .
+#     docker push <registry>/kube-deploy-server:latest
+#   Then update the image field below.
+# ============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-deploy-server
+  namespace: kube-deploy
+  labels:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: kube-deploy
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    kubernetes.io/change-cause: "initial deployment of kube-deploy-server"
+    description: "gRPC server for zero-downtime Kubernetes deployment pipeline"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-deploy
+      app.kubernetes.io/component: server
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-deploy
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: kube-deploy
+      annotations:
+        # Force rollout when ConfigMap changes by hashing the config.
+        # Update this annotation manually or use a tool like kustomize configMapGenerator.
+        checksum/config: "update-on-config-change"
+    spec:
+      serviceAccountName: kube-deploy-server
+      automountServiceAccountToken: true
+      terminationGracePeriodSeconds: 45
+
+      # ── Security Context (pod-level) ────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Init Containers ─────────────────────────────────────────────────
+      # None required — the server binary is self-contained.
+
+      containers:
+        - name: kube-deploy-server
+          image: kube-deploy-server:latest
+          imagePullPolicy: IfNotPresent
+
+          # ── Command ─────────────────────────────────────────────────────
+          args:
+            - "--config=/etc/kube-deploy/config.yaml"
+            - "--port=9090"
+            - "--log-format=json"
+            - "--log-level=info"
+
+          # ── Ports ───────────────────────────────────────────────────────
+          ports:
+            - name: grpc
+              containerPort: 9090
+              protocol: TCP
+
+          # ── Environment Variables ───────────────────────────────────────
+          env:
+            - name: KUBE_DEPLOY_IN_CLUSTER
+              value: "true"
+            - name: KUBE_DEPLOY_LOG_LEVEL
+              value: "info"
+            - name: KUBE_DEPLOY_LOG_FORMAT
+              value: "json"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
+
+          # ── Volume Mounts ───────────────────────────────────────────────
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kube-deploy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+          # ── Probes ──────────────────────────────────────────────────────
+          # gRPC health checks using the grpc_health_v1 protocol or TCP.
+          # If the server implements grpc.health.v1.Health, switch to grpc probe type.
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+            successThreshold: 1
+
+          startupProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+            successThreshold: 1
+
+          # ── Resources ───────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+          # ── Security Context (container-level) ──────────────────────────
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+      # ── Volumes ─────────────────────────────────────────────────────────
+      volumes:
+        - name: config
+          configMap:
+            name: kube-deploy-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+        # Writable /tmp for any temp file needs (Go runtime, etc.)
+        - name: tmp
+          emptyDir:
+            sizeLimit: 10Mi
+
+      # ── Scheduling ──────────────────────────────────────────────────────
+      # Spread replicas across nodes for high availability.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: kube-deploy
+              app.kubernetes.io/component: server
+
+      # Prefer scheduling on nodes without existing kube-deploy pods.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - kube-deploy
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - server
+                topologyKey: kubernetes.io/hostname

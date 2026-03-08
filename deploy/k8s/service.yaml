@@ -1,0 +1,48 @@
+# ============================================================================
+# kube-deploy — Server Service
+# Exposes the kube-deploy gRPC server within the cluster.
+#
+# This ClusterIP Service routes gRPC traffic to all kube-deploy-server pods.
+# The kdctl CLI and any other clients connect to the server through this
+# Service endpoint.
+#
+# Usage:
+#   kubectl apply -f service.yaml
+#
+# Access within the cluster:
+#   grpcurl kube-deploy-server.kube-deploy.svc.cluster.local:9090 list
+#
+# Port-forward for local development:
+#   kubectl port-forward -n kube-deploy svc/kube-deploy-server 9090:9090
+#   kdctl --server localhost:9090 status -n default -d goserver
+# ============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-deploy-server
+  namespace: kube-deploy
+  labels:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: kube-deploy
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "ClusterIP service exposing the kube-deploy gRPC server"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+    prometheus.io/scheme: "grpc"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kube-deploy
+    app.kubernetes.io/component: server
+  ports:
+    - name: grpc
+      protocol: TCP
+      port: 9090
+      targetPort: grpc
+  # No session affinity — gRPC clients handle connection-level balancing,
+  # and kube-deploy-server instances are stateless. Requests can be served
+  # by any replica.
+  sessionAffinity: None

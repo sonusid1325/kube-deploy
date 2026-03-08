@@ -33,8 +33,8 @@ CYAN   := \033[0;36m
 RESET  := \033[0m
 
 .PHONY: all build build-server build-cli clean test test-unit test-integration test-race \
-        lint vet fmt proto proto-check tidy vendor help run-server docker-goserver \
-        install-tools cover
+        lint vet fmt proto proto-check tidy vendor help run-server docker-server docker-goserver \
+        install-tools cover deploy-all deploy-server deploy-goserver undeploy-all undeploy-server undeploy-goserver
 
 # ============================================================================
 # Default target
@@ -164,8 +164,17 @@ run-server: build-server ## Build and run the kube-deploy-server
 	./$(BIN_DIR)/$(BINARY_SERVER) --port 9090 --log-format console --log-level debug
 
 # ============================================================================
-# Docker targets (goserver test app)
+# Docker targets
 # ============================================================================
+
+docker-server: ## Build the kube-deploy-server Docker image
+	@echo "$(CYAN)Building kube-deploy-server Docker image...$(RESET)"
+	docker build -t kube-deploy-server:latest \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-f Dockerfile .
+	@echo "$(GREEN)✓ kube-deploy-server image built$(RESET)"
 
 docker-goserver: ## Build the goserver test Docker image
 	@echo "$(CYAN)Building goserver Docker image...$(RESET)"
@@ -185,16 +194,44 @@ docker-goserver-v3-bad: ## Build goserver v3 (unhealthy — for rollback testing
 	@echo "$(GREEN)✓ goserver:v3-bad image built$(RESET)"
 
 # ============================================================================
-# Deploy goserver to cluster (for testing)
+# Deploy to Kubernetes cluster
 # ============================================================================
 
-deploy-goserver: ## Deploy goserver to the current Kubernetes cluster
+deploy-all: deploy-server deploy-goserver ## Deploy everything (server + goserver) to the cluster
+
+deploy-server: ## Deploy the kube-deploy server stack to the cluster
+	@echo "$(CYAN)Deploying kube-deploy server stack...$(RESET)"
+	kubectl apply -f deploy/k8s/namespace.yaml
+	kubectl apply -f deploy/k8s/serviceaccount.yaml
+	kubectl apply -f deploy/k8s/rbac.yaml
+	kubectl apply -f deploy/k8s/configmap.yaml
+	kubectl apply -f deploy/k8s/service.yaml
+	kubectl apply -f deploy/k8s/deployment.yaml
+	@echo "$(CYAN)Waiting for kube-deploy-server rollout...$(RESET)"
+	kubectl rollout status deployment/kube-deploy-server -n kube-deploy --timeout=120s || true
+	@echo "$(GREEN)✓ kube-deploy server deployed$(RESET)"
+
+deploy-goserver: ## Deploy goserver test app to the cluster
 	@echo "$(CYAN)Deploying goserver to cluster...$(RESET)"
 	kubectl apply -f deploy/goserver/deployment.yaml
 	kubectl apply -f deploy/goserver/service.yaml
+	@echo "$(CYAN)Waiting for goserver rollout...$(RESET)"
+	kubectl rollout status deployment/goserver -n default --timeout=120s || true
 	@echo "$(GREEN)✓ goserver deployed$(RESET)"
 
-undeploy-goserver: ## Remove goserver from the current Kubernetes cluster
+undeploy-all: undeploy-goserver undeploy-server ## Remove everything from the cluster
+
+undeploy-server: ## Remove the kube-deploy server stack from the cluster
+	@echo "$(CYAN)Removing kube-deploy server stack...$(RESET)"
+	kubectl delete -f deploy/k8s/deployment.yaml --ignore-not-found
+	kubectl delete -f deploy/k8s/service.yaml --ignore-not-found
+	kubectl delete -f deploy/k8s/configmap.yaml --ignore-not-found
+	kubectl delete -f deploy/k8s/rbac.yaml --ignore-not-found
+	kubectl delete -f deploy/k8s/serviceaccount.yaml --ignore-not-found
+	kubectl delete -f deploy/k8s/namespace.yaml --ignore-not-found
+	@echo "$(GREEN)✓ kube-deploy server removed$(RESET)"
+
+undeploy-goserver: ## Remove goserver from the cluster
 	@echo "$(CYAN)Removing goserver from cluster...$(RESET)"
 	kubectl delete -f deploy/goserver/service.yaml --ignore-not-found
 	kubectl delete -f deploy/goserver/deployment.yaml --ignore-not-found
