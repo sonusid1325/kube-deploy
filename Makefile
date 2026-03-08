@@ -4,6 +4,7 @@
 
 BINARY_SERVER := kube-deploy-server
 BINARY_CLI    := kdctl
+BINARY_TUI    := kube-deploy
 BIN_DIR       := bin
 MODULE        := github.com/sonu/kube-deploy
 PROTO_DIR     := proto
@@ -32,8 +33,8 @@ YELLOW := \033[0;33m
 CYAN   := \033[0;36m
 RESET  := \033[0m
 
-.PHONY: all build build-server build-cli clean test test-unit test-integration test-race \
-        lint vet fmt proto proto-check tidy vendor help run-server docker-server docker-goserver \
+.PHONY: all build build-tui build-server build-cli clean test test-unit test-integration test-race \
+        lint vet fmt proto proto-check tidy vendor help run-server run-tui docker-server docker-goserver \
         install-tools cover deploy-all deploy-server deploy-goserver undeploy-all undeploy-server undeploy-goserver
 
 # ============================================================================
@@ -46,15 +47,20 @@ all: tidy fmt vet build test ## Build and test everything
 # Build targets
 # ============================================================================
 
-build: build-server build-cli ## Build both server and CLI binaries
+build: build-tui build-server build-cli ## Build all binaries (TUI + server + CLI)
 	@echo "$(GREEN)✓ Build complete$(RESET)"
 
-build-server: ## Build the kube-deploy-server binary
+build-tui: ## Build the kube-deploy TUI binary (single binary, no server needed)
+	@echo "$(CYAN)Building $(BINARY_TUI) (Bubble Tea TUI)...$(RESET)"
+	@mkdir -p $(BIN_DIR)
+	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_TUI) ./cmd/kube-deploy
+
+build-server: ## Build the kube-deploy-server binary (gRPC server)
 	@echo "$(CYAN)Building $(BINARY_SERVER)...$(RESET)"
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_SERVER) ./cmd/kube-deploy-server
 
-build-cli: ## Build the kdctl CLI binary
+build-cli: ## Build the kdctl CLI binary (gRPC client)
 	@echo "$(CYAN)Building $(BINARY_CLI)...$(RESET)"
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) -o $(BIN_DIR)/$(BINARY_CLI) ./cmd/kdctl
@@ -158,6 +164,10 @@ install-tools: ## Install required development tools
 # ============================================================================
 # Run targets
 # ============================================================================
+
+run-tui: build-tui ## Build and launch the kube-deploy TUI
+	@echo "$(CYAN)Launching kube-deploy TUI...$(RESET)"
+	./$(BIN_DIR)/$(BINARY_TUI) -n default -d goserver
 
 run-server: build-server ## Build and run the kube-deploy-server
 	@echo "$(CYAN)Starting kube-deploy-server...$(RESET)"
