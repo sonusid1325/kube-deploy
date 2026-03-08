@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -205,7 +206,7 @@ func (r *DeploymentRequest) ApplyDefaults() {
 	if r.Strategy == StrategyRolling && r.RollingConfig == (RollingUpdateConfig{}) {
 		r.RollingConfig = DefaultRollingUpdateConfig()
 	}
-	if r.Strategy == StrategyCanary && r.CanaryConfig == (CanaryConfig{}) {
+	if r.Strategy == StrategyCanary && reflect.DeepEqual(r.CanaryConfig, CanaryConfig{}) {
 		r.CanaryConfig = DefaultCanaryConfig()
 	}
 	if r.RollbackPolicy == (RollbackPolicy{}) {
