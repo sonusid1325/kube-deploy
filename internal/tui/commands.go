@@ -261,7 +261,7 @@ func (m *Model) fetchHistoryCmd() tea.Cmd {
 func (m *Model) submitDeploy() tea.Cmd {
 	image := strings.TrimSpace(m.deployInputs[0].Value())
 	if image == "" {
-		m.deployResult = "✗ Image is required"
+		m.deployResult = IconCross + " Image is required"
 		return nil
 	}
 
@@ -321,7 +321,7 @@ func (m *Model) submitDeploy() tea.Cmd {
 	engine := m.engine
 	program := m.program // captured ref to tea.Program for Send()
 
-	m.addLog("info", "starting %s deployment: %s → %s (dry-run: %v)",
+	m.addLog("info", "starting %s deployment: %s -> %s (dry-run: %v)",
 		strategy, m.deployment, image, dryRun)
 
 	return func() tea.Msg {
@@ -363,7 +363,7 @@ func (m *Model) submitRollback() tea.Cmd {
 	if revStr != "" {
 		r, err := parseInt64(revStr)
 		if err != nil {
-			m.rollbackResult = "✗ Invalid revision number"
+			m.rollbackResult = IconCross + " Invalid revision number"
 			return nil
 		}
 		revision = r
@@ -376,7 +376,7 @@ func (m *Model) submitRollback() tea.Cmd {
 	client := m.k8sClient
 	program := m.program
 
-	m.addLog("info", "initiating rollback: %s/%s → revision %d (%s)", ns, dep, revision, reason)
+	m.addLog("info", "initiating rollback: %s/%s -> revision %d (%s)", ns, dep, revision, reason)
 
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

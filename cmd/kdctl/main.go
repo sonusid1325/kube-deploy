@@ -44,7 +44,7 @@ var (
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "kdctl",
-		Short: "⎈ kdctl — zero-downtime Kubernetes deployment pipeline",
+		Short: "kdctl -- zero-downtime Kubernetes deployment pipeline",
 		Long: `kdctl is a unified CLI tool for managing zero-downtime Kubernetes
 deployments with rolling updates, canary deployments, health monitoring,
 and automated rollback.
@@ -494,9 +494,9 @@ Examples:
 			if dryRun {
 				printHeader("DRY RUN MODE")
 			}
-			printHeader("Deploying %s/%s → %s (strategy: %s)",
+			printHeader("Deploy: %s/%s -> %s  strategy=%s",
 				globalNamespace, deployment, image, strategy)
-			fmt.Printf("  Deploy ID: %s\n\n", deployID)
+			fmt.Printf("  deploy-id: %s\n\n", deployID)
 
 			ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 			defer cancel()
@@ -690,7 +690,7 @@ func printDeploymentStatus(ctx context.Context, client *k8s.Client, namespace, d
 	fmt.Printf("  Phase:           %s\n", formatPhase(phase))
 	fmt.Printf("  Image:           %s\n", image)
 	fmt.Printf("  Strategy:        %s\n", strategyType)
-	fmt.Printf("  Replicas:        %d/%d ready, %d updated, %d available\n",
+	fmt.Printf("  Replicas:        %d/%d ready   %d updated   %d available\n",
 		deploy.Status.ReadyReplicas, desired,
 		deploy.Status.UpdatedReplicas, deploy.Status.AvailableReplicas)
 	fmt.Printf("  Revision:        %d\n", revision)
@@ -703,14 +703,14 @@ func printDeploymentStatus(ctx context.Context, client *k8s.Client, namespace, d
 	if len(deploy.Status.Conditions) > 0 {
 		fmt.Printf("\n  Conditions:\n")
 		for _, cond := range deploy.Status.Conditions {
-			fmt.Printf("    • %s=%s: %s\n", cond.Type, string(cond.Status), cond.Message)
+			fmt.Printf("    · %s=%s: %s\n", cond.Type, string(cond.Status), cond.Message)
 		}
 	}
 
 	// Pods.
 	pods, err := client.GetDeploymentPods(ctx, namespace, deployment)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ⚠ Could not fetch pods: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  ! Could not fetch pods: %v\n", err)
 		return nil
 	}
 
@@ -718,13 +718,13 @@ func printDeploymentStatus(ctx context.Context, client *k8s.Client, namespace, d
 		fmt.Printf("\n  Pods:\n")
 		fmt.Printf("    %-45s %-12s %-7s %-10s %s\n", "NAME", "STATUS", "READY", "RESTARTS", "IMAGE")
 		for _, pod := range pods {
-			ready := "✗"
+			ready := "x"
 			podImage := ""
 			restarts := int32(0)
 			msg := ""
 			for _, cs := range pod.Status.ContainerStatuses {
 				if cs.Ready {
-					ready = "✓"
+					ready = "ok"
 				}
 				restarts = cs.RestartCount
 				podImage = cs.Image
@@ -742,7 +742,7 @@ func printDeploymentStatus(ctx context.Context, client *k8s.Client, namespace, d
 			fmt.Printf("    %-45s %-12s %-7s %-10d %s\n",
 				truncate(pod.Name, 45), string(pod.Status.Phase), ready, restarts, podImage)
 			if msg != "" {
-				fmt.Printf("      └─ %s\n", msg)
+				fmt.Printf("      %s %s\n", "└─", msg)
 			}
 		}
 	}
@@ -796,7 +796,7 @@ Examples:
 			}
 
 			// Watch mode: poll at interval.
-			printHeader("Watching Health: %s/%s (interval: %v)", globalNamespace, deployment, interval)
+			printHeader("Watching health: %s/%s  interval=%v", globalNamespace, deployment, interval)
 			fmt.Println()
 
 			if err := printHealthOnce(client, mon, globalNamespace, deployment); err != nil {
@@ -817,7 +817,7 @@ Examples:
 				case <-ticker.C:
 					fmt.Println()
 					if err := printHealthOnce(client, mon, globalNamespace, deployment); err != nil {
-						fmt.Fprintf(os.Stderr, "  ✗ Error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "  x Error: %v\n", err)
 					}
 				}
 			}
@@ -856,6 +856,7 @@ func printHealthOnce(client *k8s.Client, _ *health.Monitor, namespace, deploymen
 	}
 
 	printHeader("Health: %s/%s", namespace, deployment)
+	fmt.Println()
 	fmt.Printf("  Overall: %s\n", formatHealth(overall))
 	fmt.Printf("  Ready:   %d/%d\n", ready, desired)
 
@@ -866,14 +867,14 @@ func printHealthOnce(client *k8s.Client, _ *health.Monitor, namespace, deploymen
 
 	pods, err := client.GetDeploymentPods(ctx, namespace, deployment)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  ⚠ Could not fetch pods: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  ! Could not fetch pods: %v\n", err)
 		return nil
 	}
 
 	if len(pods) > 0 {
 		fmt.Printf("\n  Pods:\n")
 		for _, pod := range pods {
-			icon := "✓"
+			icon := "●"
 			podReady := false
 			restarts := int32(0)
 			podImage := ""
@@ -888,20 +889,20 @@ func printHealthOnce(client *k8s.Client, _ *health.Monitor, namespace, deploymen
 				break
 			}
 			if !podReady {
-				icon = "✗"
+				icon = "○"
 			}
 			name := pod.Name
 			if len(name) > 45 {
 				name = name[:42] + "..."
 			}
-			fmt.Printf("    %s %-45s restarts=%-4d %s\n", icon, name, restarts, podImage)
+			fmt.Printf("    %s %-45s  restarts=%-4d  %s\n", icon, name, restarts, podImage)
 			if msg != "" {
 				fmt.Printf("      └─ %s\n", msg)
 			}
 		}
 	}
 
-	fmt.Printf("\n  Checked at: %s\n", time.Now().Local().Format("15:04:05"))
+	fmt.Printf("\n  checked at %s\n", time.Now().Local().Format("15:04:05"))
 	return nil
 }
 
@@ -915,9 +916,9 @@ func renderProgressBar(current, total, width int) string {
 	}
 	empty := width - filled
 	pct := (current * 100) / total
-	return fmt.Sprintf("%s%s %d%%",
-		strings.Repeat("█", filled),
-		strings.Repeat("░", empty),
+	return fmt.Sprintf("[%s%s] %d%%",
+		strings.Repeat("=", filled),
+		strings.Repeat("-", empty),
 		pct)
 }
 
@@ -972,7 +973,7 @@ Examples:
 				revTarget = fmt.Sprintf("%d", revision)
 			}
 
-			printHeader("Rolling back %s/%s to revision %s", globalNamespace, deployment, revTarget)
+			printHeader("Rollback: %s/%s -> revision %s", globalNamespace, deployment, revTarget)
 			fmt.Printf("  Reason: %s\n\n", reason)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -1089,8 +1090,8 @@ Examples:
 
 			fmt.Printf("\n  %-10s %-45s %-10s %-20s %s\n",
 				"REVISION", "IMAGE", "REPLICAS", "DEPLOYED AT", "NOTES")
-			fmt.Printf("  %-10s %-45s %-10s %-20s %s\n",
-				"--------", "-----", "--------", "-----------", "-----")
+			divider := strings.Repeat("─", 10) + "  " + strings.Repeat("─", 45) + "  " + strings.Repeat("─", 10) + "  " + strings.Repeat("─", 20) + "  " + strings.Repeat("─", 8)
+			fmt.Printf("  %s\n", divider)
 
 			for _, rev := range history {
 				deployedAt := ""
@@ -1133,9 +1134,9 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print kdctl version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("kdctl %s\n", version)
-			fmt.Printf("  commit:     %s\n", commit)
-			fmt.Printf("  build date: %s\n", buildDate)
+			fmt.Printf("\n  kdctl %s\n", version)
+			fmt.Printf("  commit:      %s\n", commit)
+			fmt.Printf("  build date:  %s\n\n", buildDate)
 		},
 	}
 }
@@ -1149,71 +1150,73 @@ func printDeployEvent(event models.DeployEvent, prevPhase models.DeploymentPhase
 	phaseStr := formatPhase(string(event.Phase))
 
 	if event.Phase != prevPhase {
-		fmt.Printf("\n  ── %s ──\n", phaseStr)
+		fmt.Printf("\n  ── %s %s\n", phaseStr, strings.Repeat("─", 40))
 	}
 
 	replicaInfo := ""
 	if event.DesiredReplicas > 0 {
-		replicaInfo = fmt.Sprintf(" [%d/%d ready]", event.ReadyReplicas, event.DesiredReplicas)
+		replicaInfo = fmt.Sprintf("  [%d/%d ready]", event.ReadyReplicas, event.DesiredReplicas)
 	}
 
-	fmt.Printf("  [%s] %s%s\n", ts, event.Message, replicaInfo)
+	fmt.Printf("  %s  %s%s\n", ts, event.Message, replicaInfo)
 }
 
 func printHeader(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("\n╭─ %s\n", msg)
-	fmt.Printf("╰─%s\n", strings.Repeat("─", len(msg)+1))
+	line := strings.Repeat("─", len(msg)+4)
+	fmt.Printf("\n  ┌─%s─┐\n", line)
+	fmt.Printf("  │  ⎈ %s  │\n", msg)
+	fmt.Printf("  └─%s─┘\n", line)
 }
 
 func printSuccess(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("  ✓ %s\n", msg)
+	fmt.Printf("\n  ✓ %s\n", msg)
 }
 
 func printError(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("  ✗ %s\n", msg)
+	fmt.Printf("\n  ✗ %s\n", msg)
 }
 
 func printWarning(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("  ⚠ %s\n", msg)
+	fmt.Printf("\n  ! %s\n", msg)
 }
 
 func formatPhase(phase string) string {
 	switch phase {
 	case "PENDING", string(models.PhasePending):
-		return "⏳ PENDING"
+		return "○ PENDING"
 	case "IN_PROGRESS", string(models.PhaseInProgress):
-		return "🔄 IN PROGRESS"
+		return "● IN PROGRESS"
 	case "HEALTH_CHECK", string(models.PhaseHealthCheck):
-		return "🏥 HEALTH CHECK"
+		return "+ HEALTH CHECK"
 	case "PROMOTING", string(models.PhasePromoting):
-		return "⬆️  PROMOTING"
+		return "▲ PROMOTING"
 	case "ROLLING_BACK", string(models.PhaseRollingBack):
-		return "⏪ ROLLING BACK"
+		return "◀ ROLLING BACK"
 	case "COMPLETED", string(models.PhaseCompleted):
-		return "✅ COMPLETED"
+		return "✓ COMPLETED"
 	case "FAILED", string(models.PhaseFailed):
-		return "❌ FAILED"
+		return "✗ FAILED"
 	case "ROLLED_BACK", string(models.PhaseRolledBack):
-		return "🔙 ROLLED BACK"
+		return "◀ ROLLED BACK"
 	default:
-		return "❓ " + phase
+		return "? " + phase
 	}
 }
 
 func formatHealth(status string) string {
 	switch status {
 	case "HEALTHY":
-		return "✅ HEALTHY"
+		return "● HEALTHY"
 	case "DEGRADED":
-		return "⚠️  DEGRADED"
+		return "● DEGRADED"
 	case "UNHEALTHY":
-		return "❌ UNHEALTHY"
+		return "● UNHEALTHY"
 	default:
-		return "❓ UNKNOWN"
+		return "○ UNKNOWN"
 	}
 }
 
@@ -1224,5 +1227,5 @@ func truncate(s string, maxLen int) string {
 	if maxLen <= 3 {
 		return s[:maxLen]
 	}
-	return s[:maxLen-1] + "…"
+	return s[:maxLen-3] + "..."
 }

@@ -217,7 +217,7 @@ func NewModel(namespace, deployment string, cfg *config.Config, logger *zap.Logg
 		confirmAction: ConfirmNone,
 	}
 
-	m.addLog("info", "kube-deploy TUI started — target: %s/%s", namespace, deployment)
+	m.addLog("info", "kube-deploy TUI started - target: %s/%s", namespace, deployment)
 
 	return m, nil
 }
@@ -405,10 +405,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deployDoneMsg:
 		m.deploying = false
 		if msg.err != nil {
-			m.deployResult = fmt.Sprintf("✗ Deployment failed: %v", msg.err)
+			m.deployResult = fmt.Sprintf("%s Deployment failed: %v", IconCross, msg.err)
 			m.addLog("error", "deployment failed: %v", msg.err)
 		} else {
-			m.deployResult = "✓ Deployment completed successfully!"
+			m.deployResult = IconCheck + " Deployment completed successfully!"
 			m.addLog("success", "deployment completed successfully")
 		}
 		// Refresh status and history after deploy.
@@ -417,11 +417,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case rollbackDoneMsg:
 		m.rollingBack = false
 		if msg.err != nil {
-			m.rollbackResult = fmt.Sprintf("✗ Rollback failed: %v", msg.err)
+			m.rollbackResult = fmt.Sprintf("%s Rollback failed: %v", IconCross, msg.err)
 			m.addLog("error", "rollback failed: %v", msg.err)
 		} else {
-			m.rollbackResult = fmt.Sprintf("✓ Rolled back to revision %d (%s → %s)",
-				msg.revision, msg.oldImage, msg.newImage)
+			m.rollbackResult = fmt.Sprintf("%s Rolled back to revision %d (%s -> %s)",
+				IconCheck, msg.revision, msg.oldImage, msg.newImage)
 			m.addLog("success", "rollback to revision %d succeeded", msg.revision)
 		}
 		cmds = append(cmds, m.fetchStatusCmd(), m.fetchHistoryCmd())
@@ -445,7 +445,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the full TUI screen.
 func (m *Model) View() string {
 	if m.quitting {
-		return "\n  kube-deploy exited. Goodbye!\n\n"
+		return "\n  " + IconKube + " kube-deploy exited.\n\n"
 	}
 
 	if m.width == 0 {
@@ -466,7 +466,7 @@ func (m *Model) View() string {
 
 	// Title bar.
 	title := TitleBarStyle.Width(m.width).Render(
-		fmt.Sprintf(" ⎈ kube-deploy   %s/%s", m.namespace, m.deployment),
+		fmt.Sprintf(" %s kube-deploy   %s/%s", IconKube, m.namespace, m.deployment),
 	)
 	sections = append(sections, title)
 
@@ -572,7 +572,7 @@ func (m *Model) updateDeployTab(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Show confirmation modal instead of submitting directly.
 			image := strings.TrimSpace(m.deployInputs[0].Value())
 			if image == "" {
-				m.deployResult = "✗ Image is required"
+				m.deployResult = IconCross + " Image is required"
 				return m, nil
 			}
 			m.confirmAction = ConfirmDeploy

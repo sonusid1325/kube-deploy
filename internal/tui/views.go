@@ -13,7 +13,7 @@ import (
 func (m *Model) renderTabBar() string {
 	var tabs []string
 	for i, name := range tabNames {
-		label := fmt.Sprintf(" %d·%s ", i+1, name)
+		label := fmt.Sprintf(" %d %s ", i+1, name)
 		if Tab(i) == m.activeTab {
 			tabs = append(tabs, ActiveTabStyle.Render(label))
 		} else {
@@ -21,7 +21,13 @@ func (m *Model) renderTabBar() string {
 		}
 	}
 	row := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-	return TabBarStyle.Render(row)
+
+	// Draw a subtle separator line under the tabs
+	separator := lipgloss.NewStyle().
+		Foreground(ColorBorder).
+		Render(strings.Repeat(IconDash, m.width-2))
+
+	return TabBarStyle.Render(row) + "\n" + separator
 }
 
 // ── Status Bar ─────────────────────────────────────────────────────────────
@@ -29,12 +35,17 @@ func (m *Model) renderTabBar() string {
 // renderStatusBar renders the bottom status bar with deployment info and
 // keyboard hints.
 func (m *Model) renderStatusBar() string {
+	separator := lipgloss.NewStyle().
+		Foreground(ColorBorder).
+		Render(strings.Repeat(IconDash, m.width-2))
+
 	left := ""
 	if m.lastError != "" {
 		left = lipgloss.NewStyle().Foreground(ColorDanger).Background(ColorBgAlt).
-			Render(" ✗ " + Truncate(m.lastError, m.width/2))
+			Render(" " + IconCross + " " + Truncate(m.lastError, m.width/2))
 	} else if m.statusData != nil && m.statusData.err == nil {
-		left = StatusBarTextStyle.Render(fmt.Sprintf(" ⎈ %s  %s  rev:%d",
+		left = StatusBarTextStyle.Render(fmt.Sprintf(" %s %s  %s  rev:%d",
+			IconKube,
 			m.statusData.deployment.Phase,
 			m.statusData.deployment.Image,
 			m.statusData.deployment.Revision,
@@ -52,16 +63,18 @@ func (m *Model) renderStatusBar() string {
 	}
 	mid := StatusBarStyle.Render(spaces(gap))
 
-	return lipgloss.JoinHorizontal(lipgloss.Top,
+	bar := lipgloss.JoinHorizontal(lipgloss.Top,
 		StatusBarStyle.Render(left), mid, StatusBarStyle.Render(right),
 	)
+
+	return separator + "\n" + bar
 }
 
 // ── Help Overlay ───────────────────────────────────────────────────────────
 
 // renderHelpOverlay renders a centered help panel showing all keybindings.
 func (m *Model) renderHelpOverlay() string {
-	title := PanelTitleStyle.Render("  Keyboard Shortcuts")
+	title := PanelTitleStyle.Render(IconKube + "  Keyboard Shortcuts")
 
 	sections := []struct {
 		heading string
@@ -80,16 +93,16 @@ func (m *Model) renderHelpOverlay() string {
 		{
 			heading: "Deploy / Rollback Forms",
 			keys: [][]string{
-				{"↑ / ↓", "Move between form fields"},
+				{"up / down", "Move between form fields"},
 				{"enter", "Next field / submit"},
-				{"← / →", "Toggle strategy / dry-run"},
+				{"left / right", "Toggle strategy / dry-run"},
 				{"space", "Toggle checkbox"},
 			},
 		},
 		{
 			heading: "History & Logs",
 			keys: [][]string{
-				{"↑ / ↓", "Scroll entries"},
+				{"up / down", "Scroll entries"},
 				{"r", "Refresh data"},
 			},
 		},
@@ -108,6 +121,8 @@ func (m *Model) renderHelpOverlay() string {
 
 	for _, s := range sections {
 		b.WriteString(TextAccent.Render("  "+s.heading) + "\n")
+		divider := TextMuted.Render("  " + strings.Repeat(string(IconDash), 40))
+		b.WriteString(divider + "\n")
 		for _, kv := range s.keys {
 			key := StatusBarKeyStyle.Render(PadRight(kv[0], 22))
 			desc := TextDim.Render(kv[1])
@@ -118,7 +133,7 @@ func (m *Model) renderHelpOverlay() string {
 
 	b.WriteString(TextDim.Render("  Press ? or esc to close"))
 
-	panelWidth := 60
+	panelWidth := 58
 	if m.width > 0 && panelWidth > m.width-4 {
 		panelWidth = m.width - 4
 	}
@@ -154,26 +169,26 @@ func (m *Model) renderConfirmModal() string {
 		if m.deployDryRun {
 			dryLabel = " (DRY RUN)"
 		}
-		title = TextWarning.Render("  Confirm Deployment")
+		title = TextWarning.Render(IconDeploy + "  Confirm Deployment")
 		body = fmt.Sprintf(
 			"  Deploy %s to %s/%s\n  Strategy: %s%s\n\n  %s",
 			TextBold.Render(image),
 			m.namespace, m.deployment,
 			StrategyBadge(strategy),
 			TextDim.Render(dryLabel),
-			TextDim.Render("Press y/enter to confirm, n/esc to cancel"),
+			TextDim.Render("y/enter = confirm    n/esc = cancel"),
 		)
 	case ConfirmRollback:
 		revStr := strings.TrimSpace(m.rollbackRevision.Value())
 		if revStr == "" || revStr == "0" {
 			revStr = "previous"
 		}
-		title = TextWarning.Render("  Confirm Rollback")
+		title = TextWarning.Render(IconRollback + "  Confirm Rollback")
 		body = fmt.Sprintf(
 			"  Rollback %s/%s to revision %s\n\n  %s",
 			m.namespace, m.deployment,
 			TextBold.Render(revStr),
-			TextDim.Render("Press y/enter to confirm, n/esc to cancel"),
+			TextDim.Render("y/enter = confirm    n/esc = cancel"),
 		)
 	default:
 		return ""
@@ -215,38 +230,38 @@ func (m *Model) renderStatusTab() string {
 		return m.spinner.View() + " Fetching deployment status..."
 	}
 	if m.statusData == nil {
-		return TextDim.Render("No status data yet. Press r to refresh.")
+		return TextDim.Render("  No status data yet. Press r to refresh.")
 	}
 	if m.statusData.err != nil {
-		return TextDanger.Render(fmt.Sprintf("Error: %v", m.statusData.err))
+		return TextDanger.Render(fmt.Sprintf("  %s Error: %v", IconCross, m.statusData.err))
 	}
 
 	d := m.statusData.deployment
 	var b strings.Builder
 
-	// Header panel.
-	b.WriteString(PanelTitleStyle.Render("  Deployment Overview"))
-	b.WriteString("\n\n")
+	// Section header
+	b.WriteString(sectionHeader("Deployment Overview"))
+	b.WriteString("\n")
 
 	rows := [][]string{
-		{" Name", d.Name},
-		{" Namespace", d.Namespace},
-		{" Image", d.Image},
-		{" Strategy", d.Strategy},
-		{" Phase", ""},
-		{" Replicas", fmt.Sprintf("%d/%d ready · %d updated · %d available",
+		{"Name", d.Name},
+		{"Namespace", d.Namespace},
+		{"Image", d.Image},
+		{"Strategy", d.Strategy},
+		{"Phase", ""},
+		{"Replicas", fmt.Sprintf("%d/%d ready   %d updated   %d available",
 			d.ReadyReplicas, d.DesiredReplicas, d.UpdatedReplicas, d.AvailableReplicas)},
-		{" Revision", fmt.Sprintf("%d", d.Revision)},
-		{" Health", ""},
+		{"Revision", fmt.Sprintf("%d", d.Revision)},
+		{"Health", ""},
 	}
 
 	for _, row := range rows {
 		label := LabelStyle.Render(row[0])
 		var val string
 		switch row[0] {
-		case " Phase":
+		case "Phase":
 			val = PhaseBadge(d.Phase)
-		case " Health":
+		case "Health":
 			val = HealthBadge(d.HealthStatus)
 		default:
 			val = ValueStyle.Render(row[1])
@@ -256,7 +271,7 @@ func (m *Model) renderStatusTab() string {
 
 	if !d.LastUpdated.IsZero() {
 		b.WriteString(fmt.Sprintf("  %s %s\n",
-			LabelStyle.Render(" Last Updated"),
+			LabelStyle.Render("Last Updated"),
 			TextDim.Render(d.LastUpdated.Local().Format("2006-01-02 15:04:05")),
 		))
 	}
@@ -264,17 +279,17 @@ func (m *Model) renderStatusTab() string {
 	// Conditions.
 	if len(m.statusData.conditions) > 0 {
 		b.WriteString("\n")
-		b.WriteString(PanelTitleStyle.Render("  Conditions"))
+		b.WriteString(sectionHeader("Conditions"))
 		b.WriteString("\n")
 		for _, c := range m.statusData.conditions {
-			b.WriteString(fmt.Sprintf("    %s %s\n", TextDim.Render("•"), c))
+			b.WriteString(fmt.Sprintf("    %s %s\n", TextDim.Render(IconDot), c))
 		}
 	}
 
 	// Pods table.
 	if len(m.statusData.pods) > 0 {
 		b.WriteString("\n")
-		b.WriteString(PanelTitleStyle.Render("  Pods"))
+		b.WriteString(sectionHeader("Pods"))
 		b.WriteString("\n")
 		b.WriteString(m.renderPodTable(m.statusData.pods))
 	}
@@ -334,36 +349,36 @@ func (m *Model) renderHealthTab() string {
 		return m.spinner.View() + " Checking health..."
 	}
 	if m.healthData == nil {
-		return TextDim.Render("No health data yet. Press r to refresh.")
+		return TextDim.Render("  No health data yet. Press r to refresh.")
 	}
 	if m.healthData.err != nil {
-		return TextDanger.Render(fmt.Sprintf("Error: %v", m.healthData.err))
+		return TextDanger.Render(fmt.Sprintf("  %s Error: %v", IconCross, m.healthData.err))
 	}
 
 	h := m.healthData
 	var b strings.Builder
 
-	b.WriteString(PanelTitleStyle.Render("  Health Overview"))
-	b.WriteString("\n\n")
+	b.WriteString(sectionHeader("Health Overview"))
+	b.WriteString("\n")
 
-	b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render(" Overall"), HealthBadge(h.overall)))
-	b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render(" Ready Pods"),
+	b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render("Overall"), HealthBadge(h.overall)))
+	b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render("Ready Pods"),
 		ValueStyle.Render(fmt.Sprintf("%d / %d", h.ready, h.desired))))
 
 	// Progress bar.
 	if h.desired > 0 {
-		b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render(" Progress"),
+		b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render("Progress"),
 			renderProgressBar(h.ready, h.desired, 30)))
 	}
 
 	if !h.fetchedAt.IsZero() {
-		b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render(" Checked At"),
+		b.WriteString(fmt.Sprintf("  %s %s\n", LabelStyle.Render("Checked At"),
 			TextDim.Render(h.fetchedAt.Local().Format("15:04:05"))))
 	}
 
 	if len(h.pods) > 0 {
 		b.WriteString("\n")
-		b.WriteString(PanelTitleStyle.Render("  Pod Health"))
+		b.WriteString(sectionHeader("Pod Health"))
 		b.WriteString("\n")
 
 		for _, pod := range h.pods {
@@ -371,7 +386,7 @@ func (m *Model) renderHealthTab() string {
 			if !pod.Ready {
 				icon = HealthIcon("Unhealthy")
 			}
-			line := fmt.Sprintf("    %s %s  restarts=%d  %s",
+			line := fmt.Sprintf("    %s %s  restarts=%-4d %s",
 				icon,
 				PadRight(Truncate(pod.Name, 40), 40),
 				pod.RestartCount,
@@ -414,8 +429,8 @@ func renderProgressBar(current, total, width int) string {
 func (m *Model) renderDeployTab() string {
 	var b strings.Builder
 
-	b.WriteString(PanelTitleStyle.Render("  New Deployment"))
-	b.WriteString("\n\n")
+	b.WriteString(sectionHeader(IconDeploy + " New Deployment"))
+	b.WriteString("\n")
 
 	strategies := []string{"rolling", "canary"}
 	strategyDisplay := strategies[m.deployStrategy]
@@ -450,7 +465,7 @@ func (m *Model) renderDeployTab() string {
 	for _, f := range fields {
 		cursor := "  "
 		if f.field == m.deployFocusField {
-			cursor = TextAccent.Render("▸ ")
+			cursor = TextAccent.Render(IconArrowR + " ")
 		}
 		label := LabelStyle.Render(f.label)
 		b.WriteString(fmt.Sprintf("  %s%s %s\n", cursor, label, f.render))
@@ -468,7 +483,7 @@ func (m *Model) renderDeployTab() string {
 	}
 	cursor := "  "
 	if m.deployFocusField == FieldSubmit {
-		cursor = TextAccent.Render("▸ ")
+		cursor = TextAccent.Render(IconArrowR + " ")
 	}
 	b.WriteString(fmt.Sprintf("  %s%s  %s\n",
 		cursor,
@@ -482,7 +497,7 @@ func (m *Model) renderDeployTab() string {
 	}
 	if m.deployResult != "" {
 		style := TextSuccess
-		if strings.HasPrefix(m.deployResult, "✗") {
+		if strings.HasPrefix(m.deployResult, IconCross) {
 			style = TextDanger
 		}
 		b.WriteString(fmt.Sprintf("\n  %s\n", style.Render(m.deployResult)))
@@ -491,7 +506,7 @@ func (m *Model) renderDeployTab() string {
 	// Deploy event log.
 	if len(m.deployEvents) > 0 {
 		b.WriteString("\n")
-		b.WriteString(PanelTitleStyle.Render("  Events"))
+		b.WriteString(sectionHeader("Events"))
 		b.WriteString("\n")
 		b.WriteString(m.deployViewport.View())
 	}
@@ -513,7 +528,7 @@ func (m *Model) renderStrategySelector(current string) string {
 	}
 	hint := ""
 	if m.deployFocusField == FieldStrategy {
-		hint = TextDim.Render("  ←/→ to switch")
+		hint = TextDim.Render("  left/right to switch")
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, append(parts, hint)...)
 }
@@ -521,7 +536,7 @@ func (m *Model) renderStrategySelector(current string) string {
 // renderCheckbox renders a simple on/off checkbox.
 func (m *Model) renderCheckbox(checked bool) string {
 	if checked {
-		return TextSuccess.Render("[✓]") + TextDim.Render(" enabled")
+		return TextSuccess.Render("["+IconCheck+"]") + TextDim.Render(" enabled")
 	}
 	return TextDim.Render("[ ]") + TextDim.Render(" disabled")
 }
@@ -549,8 +564,8 @@ func (m *Model) renderDeployEvents() string {
 func (m *Model) renderRollbackTab() string {
 	var b strings.Builder
 
-	b.WriteString(PanelTitleStyle.Render("  Manual Rollback"))
-	b.WriteString("\n\n")
+	b.WriteString(sectionHeader(IconRollback + " Manual Rollback"))
+	b.WriteString("\n")
 
 	type formField struct {
 		label string
@@ -566,7 +581,7 @@ func (m *Model) renderRollbackTab() string {
 	for _, f := range fields {
 		cursor := "  "
 		if f.idx == m.rollbackFocusField {
-			cursor = TextAccent.Render("▸ ")
+			cursor = TextAccent.Render(IconArrowR + " ")
 		}
 		label := LabelStyle.Render(f.label)
 		b.WriteString(fmt.Sprintf("  %s%s %s\n", cursor, label, f.view))
@@ -579,7 +594,7 @@ func (m *Model) renderRollbackTab() string {
 	}
 	cursor := "  "
 	if m.rollbackFocusField == 2 {
-		cursor = TextAccent.Render("▸ ")
+		cursor = TextAccent.Render(IconArrowR + " ")
 	}
 	b.WriteString(fmt.Sprintf("  %s%s  %s\n",
 		cursor,
@@ -592,7 +607,7 @@ func (m *Model) renderRollbackTab() string {
 	}
 	if m.rollbackResult != "" {
 		style := TextSuccess
-		if strings.HasPrefix(m.rollbackResult, "✗") {
+		if strings.HasPrefix(m.rollbackResult, IconCross) {
 			style = TextDanger
 		}
 		b.WriteString(fmt.Sprintf("\n  %s\n", style.Render(m.rollbackResult)))
@@ -601,7 +616,7 @@ func (m *Model) renderRollbackTab() string {
 	// Show recent history for reference.
 	if m.historyData != nil && m.historyData.err == nil && len(m.historyData.revisions) > 0 {
 		b.WriteString("\n")
-		b.WriteString(PanelTitleStyle.Render("  Available Revisions"))
+		b.WriteString(sectionHeader("Available Revisions"))
 		b.WriteString("\n")
 		b.WriteString(m.renderHistoryTable(minInt(5, len(m.historyData.revisions))))
 	}
@@ -617,21 +632,21 @@ func (m *Model) renderHistoryTab() string {
 		return m.spinner.View() + " Fetching history..."
 	}
 	if m.historyData == nil {
-		return TextDim.Render("No history data yet. Press r to refresh.")
+		return TextDim.Render("  No history data yet. Press r to refresh.")
 	}
 	if m.historyData.err != nil {
-		return TextDanger.Render(fmt.Sprintf("Error: %v", m.historyData.err))
+		return TextDanger.Render(fmt.Sprintf("  %s Error: %v", IconCross, m.historyData.err))
 	}
 
 	var b strings.Builder
-	b.WriteString(PanelTitleStyle.Render("  Deployment History"))
-	b.WriteString("\n\n")
+	b.WriteString(sectionHeader("Deployment History"))
+	b.WriteString("\n")
 
 	if len(m.historyData.revisions) == 0 {
 		b.WriteString(TextDim.Render("  No revision history found."))
 	} else {
 		total := len(m.historyData.revisions)
-		b.WriteString(TextDim.Render(fmt.Sprintf("  Showing %d revision(s)\n\n", total)))
+		b.WriteString(TextDim.Render(fmt.Sprintf("  %d revision(s)\n\n", total)))
 		b.WriteString(m.renderHistoryTable(total))
 	}
 
@@ -700,8 +715,8 @@ func (m *Model) renderLogsTab() string {
 	m.logsMu.Unlock()
 
 	var b strings.Builder
-	b.WriteString(PanelTitleStyle.Render("  Activity Log"))
-	b.WriteString("\n\n")
+	b.WriteString(sectionHeader("Activity Log"))
+	b.WriteString("\n")
 
 	if len(logs) == 0 {
 		b.WriteString(TextDim.Render("  No activity yet."))
@@ -721,16 +736,16 @@ func (m *Model) renderLogsTab() string {
 		var msgStyle lipgloss.Style
 		switch entry.Level {
 		case "success":
-			lvl = TextSuccess.Render(" ✓ ")
+			lvl = TextSuccess.Render(" " + IconCheck + " ")
 			msgStyle = LogSuccessStyle
 		case "warning":
-			lvl = TextWarning.Render(" ⚠ ")
+			lvl = TextWarning.Render(" " + IconWarning + " ")
 			msgStyle = LogWarningStyle
 		case "error":
-			lvl = TextDanger.Render(" ✗ ")
+			lvl = TextDanger.Render(" " + IconCross + " ")
 			msgStyle = LogErrorStyle
 		default:
-			lvl = TextInfo.Render(" ● ")
+			lvl = TextInfo.Render(" " + IconDot + " ")
 			msgStyle = LogMessageStyle
 		}
 		b.WriteString(fmt.Sprintf("  %s%s%s\n", ts, lvl, msgStyle.Render(entry.Message)))
@@ -743,4 +758,12 @@ func (m *Model) renderLogsTab() string {
 	}
 
 	return PanelStyle.Width(m.width - 6).Render(b.String())
+}
+
+// ── Section Header Helper ──────────────────────────────────────────────────
+
+// sectionHeader renders a consistent section title with a subtle divider.
+func sectionHeader(title string) string {
+	styled := PanelTitleStyle.Render("  " + title)
+	return styled
 }

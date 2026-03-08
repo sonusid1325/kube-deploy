@@ -3,28 +3,30 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 // ── Color Palette ──────────────────────────────────────────────────────────
+// A refined, muted palette inspired by modern terminal UIs.
+// Dark background tones with carefully chosen accent colors.
 
 var (
-	ColorPrimary   = lipgloss.Color("#7C3AED") // violet-600
-	ColorSecondary = lipgloss.Color("#06B6D4") // cyan-500
-	ColorSuccess   = lipgloss.Color("#10B981") // emerald-500
-	ColorWarning   = lipgloss.Color("#F59E0B") // amber-500
-	ColorDanger    = lipgloss.Color("#EF4444") // red-500
-	ColorInfo      = lipgloss.Color("#3B82F6") // blue-500
-	ColorMuted     = lipgloss.Color("#6B7280") // gray-500
-	ColorSubtle    = lipgloss.Color("#374151") // gray-700
-	ColorBorder    = lipgloss.Color("#4B5563") // gray-600
-	ColorBg        = lipgloss.Color("#111827") // gray-900
-	ColorBgAlt     = lipgloss.Color("#1F2937") // gray-800
-	ColorText      = lipgloss.Color("#F9FAFB") // gray-50
-	ColorTextDim   = lipgloss.Color("#9CA3AF") // gray-400
-	ColorAccent    = lipgloss.Color("#A78BFA") // violet-400
-	ColorHighlight = lipgloss.Color("#818CF8") // indigo-400
-	ColorCanary    = lipgloss.Color("#FBBF24") // amber-400
-	ColorRollback  = lipgloss.Color("#FB923C") // orange-400
-	ColorHealthy   = lipgloss.Color("#34D399") // emerald-400
-	ColorUnhealthy = lipgloss.Color("#F87171") // red-400
-	ColorDegraded  = lipgloss.Color("#FBBF24") // amber-400
+	ColorPrimary   = lipgloss.Color("#5B6EE1") // soft indigo
+	ColorSecondary = lipgloss.Color("#59C2CF") // muted cyan
+	ColorSuccess   = lipgloss.Color("#5FCC7A") // soft green
+	ColorWarning   = lipgloss.Color("#E0A458") // warm amber
+	ColorDanger    = lipgloss.Color("#E06070") // muted red
+	ColorInfo      = lipgloss.Color("#6A9FD9") // calm blue
+	ColorMuted     = lipgloss.Color("#5C6370") // dim gray
+	ColorSubtle    = lipgloss.Color("#3E4452") // dark gray
+	ColorBorder    = lipgloss.Color("#4B5263") // border gray
+	ColorBg        = lipgloss.Color("#1E2127") // deep background
+	ColorBgAlt     = lipgloss.Color("#282C34") // alt background
+	ColorText      = lipgloss.Color("#E5E9F0") // near-white
+	ColorTextDim   = lipgloss.Color("#8B929E") // medium gray
+	ColorAccent    = lipgloss.Color("#7C8CDB") // lighter indigo
+	ColorHighlight = lipgloss.Color("#8990B3") // soft highlight
+	ColorCanary    = lipgloss.Color("#D4A94F") // gold
+	ColorRollback  = lipgloss.Color("#D08850") // copper
+	ColorHealthy   = lipgloss.Color("#5FCC7A") // green
+	ColorUnhealthy = lipgloss.Color("#E06070") // red
+	ColorDegraded  = lipgloss.Color("#E0A458") // amber
 )
 
 // ── Base Styles ────────────────────────────────────────────────────────────
@@ -40,7 +42,7 @@ var (
 			Foreground(ColorText).
 			Background(ColorPrimary).
 			Padding(0, 2).
-			MarginBottom(1)
+			MarginBottom(0)
 
 	// Status bar at the very bottom
 	StatusBarStyle = lipgloss.NewStyle().
@@ -75,7 +77,7 @@ var (
 			Foreground(ColorBorder)
 
 	TabBarStyle = lipgloss.NewStyle().
-			MarginBottom(1)
+			MarginBottom(0)
 )
 
 // ── Panel / Box Styles ─────────────────────────────────────────────────────
@@ -128,25 +130,25 @@ var (
 
 var (
 	BadgeSuccess = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1E2127")).
 			Background(ColorSuccess).
 			Bold(true).
 			Padding(0, 1)
 
 	BadgeWarning = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1E2127")).
 			Background(ColorWarning).
 			Bold(true).
 			Padding(0, 1)
 
 	BadgeDanger = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1E2127")).
 			Background(ColorDanger).
 			Bold(true).
 			Padding(0, 1)
 
 	BadgeInfo = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1E2127")).
 			Background(ColorInfo).
 			Bold(true).
 			Padding(0, 1)
@@ -157,7 +159,7 @@ var (
 			Padding(0, 1)
 
 	BadgeCanary = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#000000")).
+			Foreground(lipgloss.Color("#1E2127")).
 			Background(ColorCanary).
 			Bold(true).
 			Padding(0, 1)
@@ -273,30 +275,34 @@ var (
 )
 
 // ── Icons ──────────────────────────────────────────────────────────────────
+// Clean Unicode glyphs only — no emoji.
+// The Kubernetes helm icon (⎈) is used as the app/brand symbol.
 
 const (
-	IconHealthy   = "●"
-	IconUnhealthy = "●"
-	IconDegraded  = "●"
-	IconUnknown   = "○"
-	IconCheck     = "✓"
-	IconCross     = "✗"
-	IconWarning   = "⚠"
-	IconArrowR    = "→"
-	IconArrowUp   = "↑"
-	IconArrowDown = "↓"
-	IconDot       = "·"
-	IconPipe      = "│"
-	IconCorner    = "└"
-	IconTee       = "├"
-	IconDash      = "─"
-	IconSpinner   = "◐"
-	IconRocket    = "🚀"
-	IconRollback  = "⏪"
-	IconCanary    = "🐤"
-	IconPod       = "◉"
-	IconReady     = "✔"
-	IconNotReady  = "✘"
+	IconKube      = "⎈"  // Kubernetes helm
+	IconHealthy   = "●"  // filled circle — healthy
+	IconUnhealthy = "●"  // filled circle — unhealthy (colored red)
+	IconDegraded  = "●"  // filled circle — degraded (colored amber)
+	IconUnknown   = "○"  // open circle
+	IconCheck     = "✓"  // checkmark
+	IconCross     = "✗"  // cross
+	IconWarning   = "!"  // simple exclamation
+	IconArrowR    = "→"  // right arrow
+	IconArrowUp   = "↑"  // up arrow
+	IconArrowDown = "↓"  // down arrow
+	IconDot       = "·"  // middle dot
+	IconPipe      = "│"  // box drawing vertical
+	IconCorner    = "└"  // box drawing corner
+	IconTee       = "├"  // box drawing tee
+	IconDash      = "─"  // box drawing horizontal
+	IconSpinner   = "◐"  // half circle
+	IconDeploy    = "▲"  // triangle up — deploy
+	IconRollback  = "◀"  // triangle left — rollback
+	IconCanary    = "◆"  // diamond — canary
+	IconPod       = "◉"  // circled dot — pod
+	IconReady     = "✓"  // ready
+	IconNotReady  = "✗"  // not ready
+	IconSection   = "──" // section divider
 )
 
 // ── Helper Functions ───────────────────────────────────────────────────────
@@ -305,13 +311,13 @@ const (
 func HealthBadge(status string) string {
 	switch status {
 	case "Healthy", "HEALTHY":
-		return BadgeSuccess.Render("HEALTHY")
+		return BadgeSuccess.Render(" HEALTHY ")
 	case "Degraded", "DEGRADED":
-		return BadgeWarning.Render("DEGRADED")
+		return BadgeWarning.Render(" DEGRADED ")
 	case "Unhealthy", "UNHEALTHY":
-		return BadgeDanger.Render("UNHEALTHY")
+		return BadgeDanger.Render(" UNHEALTHY ")
 	default:
-		return BadgeMuted.Render("UNKNOWN")
+		return BadgeMuted.Render(" UNKNOWN ")
 	}
 }
 
@@ -343,13 +349,13 @@ func PhaseBadge(phase string) string {
 func StrategyBadge(strategy string) string {
 	switch strategy {
 	case "rolling":
-		return BadgeInfo.Render("ROLLING")
+		return BadgeInfo.Render(" ROLLING ")
 	case "canary":
-		return BadgeCanary.Render("CANARY")
+		return BadgeCanary.Render(" CANARY ")
 	case "blue-green":
-		return BadgeSuccess.Render("BLUE/GREEN")
+		return BadgeSuccess.Render(" BLUE/GREEN ")
 	default:
-		return BadgeMuted.Render(strategy)
+		return BadgeMuted.Render(" " + strategy + " ")
 	}
 }
 
@@ -375,20 +381,20 @@ func ReadyIcon(ready bool) string {
 	return lipgloss.NewStyle().Foreground(ColorUnhealthy).Render(IconNotReady)
 }
 
-// KeyHelp renders a key binding hint (e.g. "tab" → "switch tab").
+// KeyHelp renders a key binding hint (e.g. "tab" -> "switch tab").
 func KeyHelp(key, description string) string {
 	return StatusBarKeyStyle.Render(key) + StatusBarTextStyle.Render(" "+description)
 }
 
-// Truncate shortens a string to maxLen, appending "…" if truncated.
+// Truncate shortens a string to maxLen, appending "..." if truncated.
 func Truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	if maxLen <= 1 {
+	if maxLen <= 3 {
 		return s[:maxLen]
 	}
-	return s[:maxLen-1] + "…"
+	return s[:maxLen-3] + "..."
 }
 
 // PadRight pads a string to the given width with spaces.
